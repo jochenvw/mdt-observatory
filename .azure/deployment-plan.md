@@ -2,7 +2,19 @@
 
 Status: Deployed - room synchronisation release live
 
-Released 2026-09-17: image `sha256:043d7cdba49f1f12c0303f0cdd22aa5d4edc05a25815b3bbd223ee9796695f57`,
+Released 2026-09-17 (22:41 +02:00): image
+`sha256:378d7ffa39766c1c5d443b95964b46c44ffd8bcbf7a57e87e384541fb6c607d8`,
+revision `mdt-observatory-vnet--r20260917204147-7df16e`, 100% traffic, single active
+replica, `RunningAtMaxScale`, prior revisions drained. Built from the committed and
+pushed source at `42059c4` (clean working tree, tag `release-room-sync`,
+https://github.com/jochenvw/mdt-observatory), so the running container is provably
+the published commit. TLS/health/readiness/private-Blob verified by the release
+script; live smoke test confirmed the frontend returns 200 while `/api/meeting`,
+`/api/room/stream` and `/api/cases` all return 401 without the presenter cookie and
+200 with it, listing all three cases. Live RBAC re-confirmed: AcrPull, Storage Blob
+Data Contributor on the `mdt-state` container only, Cognitive Services OpenAI User.
+
+Previously released 2026-09-17: image `sha256:043d7cdba49f1f12c0303f0cdd22aa5d4edc05a25815b3bbd223ee9796695f57`,
 revision `mdt-observatory-vnet--r20260917174949-3656fc`, 100% traffic, single active
 replica, prior revisions drained, TLS/health/readiness/private-Blob verified. Live
 RBAC re-confirmed: AcrPull at the registry, Storage Blob Data Contributor scoped to
