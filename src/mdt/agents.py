@@ -28,7 +28,6 @@ from pydantic import ValidationError
 from mdt.case_registry import APPLICABILITY_ROLES, CaseDefinition, get_case
 from mdt.config import Settings
 from mdt.models import Claim, Evidence, Position, Role, Trace
-from mdt.scenario import CASE, EVIDENCE, RESIDUAL_CONDITIONS, ROLE_CONTEXTS, ROLE_LABELS
 
 type Emit = Callable[[str, dict[str, Any]], Awaitable[None]]
 
@@ -49,69 +48,6 @@ _AZURE_SEMAPHORES: WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphor
 )
 _AZURE_NEXT_REQUEST: WeakKeyDictionary[asyncio.AbstractEventLoop, float] = WeakKeyDictionary()
 
-PROTOCOL_CONDITION = (
-    "PROTOCOL_NOT_PUBLIC: obtain and review the fictional local pathway before treatment; "
-    "its unavailability remains a nonblocking plan condition, not a resolved lookup."
-)
-APPLICABILITY_CONDITION = (
-    "Conditional applicability only: BREAKWATER concerns systemic efficacy, CAIRO5 conversion "
-    "assessment with different induction and uncertain survival translation, and PROVENC3 "
-    "postoperative stage III ctDNA prognosis, not a stage IV surgical veto. Independently "
-    "reviewed articles and Dutch BOM advice establish no combined perioperative pathway. "
-    "Original CAIRO5 is abstract-only; full protocol/local pathway review remains limited. "
-    "Compare all three "
-    "management alternatives with humans; no automatic surgical selection."
-)
-
-ROLE_PROMPTS: dict[Role, str] = {
-    Role.RADIOLOGY: (
-        "You are the radiology specialist. Map all nine baseline and response liver sites, "
-        "including sites without an allocated treatment. Review acquisition, vessels, remnant "
-        "and chest. S1-IVC 3 mm and S4a-MHV 2 mm remain concerns. The stable 5 mm lung nodule "
-        "is below PET resolution, not proven benign. Request targeted human review."
-    ),
-    Role.ONCOLOGY: (
-        "You are the medical oncology specialist. Assess four cycles of encorafenib/cetuximab/"
-        "mFOLFOX6, response, persistent ctDNA, rash, neuropathy and hypomagnesemia. Compare "
-        "local clearance review now versus more systemic therapy versus selective consolidation. "
-        "Preserve source date ambiguities and perioperative uncertainty; do not select surgery."
-    ),
-    Role.SURGERY: (
-        "You are the HPB/colorectal surgical specialist, incorporating interventional radiology "
-        "and radiation oncology consultation perspectives, not extra human votes. Review all "
-        "nine sites, S1-IVC/S4a-MHV margins, heat-sink, >65% predicted remnant, liver-first/"
-        "synchronous/staged colectomy and SBRT contingency. Technical feasibility is not "
-        "oncological utility. A source-preferred conditional strategy is not approval to operate."
-    ),
-    Role.PATHOLOGY: (
-        "You are the pathology specialist. Assess colorectal morphology, pMMR/MSS, BRAF V600E, "
-        "APC/TP53/SMAD4 variants, VAFs and negative predictive markers. Preserve tissue for "
-        "response assessment. Biopsy cannot establish clearance, operability or consent."
-    ),
-    Role.RESEARCH: (
-        "You are the evidence researcher. Compare BREAKWATER, CAIRO5 original and long-term "
-        "interpretations, and PROVENC3. They answer distinct systemic/conversion/stage III "
-        "prognostic questions. Distinguish the original CAIRO5 abstract from its full-text "
-        "long-term report; use independently reviewed evidence with actual access labels. "
-        "Never turn case-source reference tokens into citations or invent URLs/DOIs/effects. "
-        "Prefer NL/EU "
-        "context. Persistent ctDNA is not an absolute conversion-surgery veto."
-    ),
-    Role.PROTOCOL: (
-        "You are the protocol specialist. Separate current Dutch/EU guidance, authorisation, "
-        "trial protocols and local policy. Dutch BOM advice was independently reviewed but is "
-        "palliative systemic guidance, not surgery approval. Do not pretend to search networks. "
-        "Retain PROTOCOL_NOT_PUBLIC and explicit gaps in perioperative "
-        "BRAF/EGFR interruption/restart and colorectal sequencing."
-    ),
-    Role.PATIENT: (
-        "You represent only the fictional patient's documented priorities, not a real person. "
-        "Explain uncertain cure, operative burden, independence and avoiding permanent stoma. "
-        "Use partner/two adult children and supportive care without demographic stereotypes. "
-        "Invite a human preference discussion; do not invent preferences or consent."
-    ),
-}
-
 CORE_TOOLS: dict[Role, str] = {
     Role.RADIOLOGY: "compare_imaging",
     Role.ONCOLOGY: "reconcile_toxicity",
@@ -126,21 +62,6 @@ ROLE_TOOL_ALLOWLISTS: dict[Role, tuple[str, ...]] = {
     + ((f"assess_{role.value}_applicability",) if role in APPLICABILITY_ROLES else ())
     for role in Role
 }
-STUDY_EVIDENCE_IDS = (
-    "CRC-BREAKWATER", "CRC-CAIRO5", "CRC-CAIRO5-LONGTERM", "CRC-PROVENC3", "CRC-NVMO-BOM",
-)
-ROLE_EVIDENCE_IDS: dict[Role, tuple[str, ...]] = {
-    Role.RADIOLOGY: ("CASE-CRC-RADIOLOGY",),
-    Role.ONCOLOGY: ("CASE-CRC-ONCOLOGY", *STUDY_EVIDENCE_IDS),
-    Role.SURGERY: ("CASE-CRC-SURGERY", *STUDY_EVIDENCE_IDS),
-    Role.PATHOLOGY: ("CASE-CRC-PATHOLOGY",),
-    Role.RESEARCH: ("CASE-CRC-RESEARCH", *STUDY_EVIDENCE_IDS),
-    Role.PROTOCOL: (
-        "CASE-CRC-PROTOCOL", *STUDY_EVIDENCE_IDS,
-    ),
-    Role.PATIENT: ("CASE-CRC-PATIENT",),
-}
-_EVIDENCE_BY_ID = {item.id: item for item in EVIDENCE}
 
 
 class AgentRuntimeError(RuntimeError):
@@ -193,15 +114,9 @@ class RunState:
         return {item.id for result in self.results for item in result.evidence}
 
 
-def _targeted_imaging_guidance(
-    guidance: list[str], terms: list[str] | None = None,
-) -> bool:
-    target = (
-        r"\b(clearance|mapping|map|vessels?|vascular|liver|lung|chest|remnant|"
-        r"IVC|MHV|lever|longnodus|vaatrelaties)\b"
-    )
-    if terms is not None:
-        target = r"\b(?:" + "|".join(re.escape(term) for term in terms) + r")\b"
+def _targeted_imaging_guidance(guidance: list[str], terms: list[str]) -> bool:
+    """True when human guidance asks for a comparison of one of the case's structures."""
+    target = r"\b(?:" + "|".join(re.escape(term) for term in terms) + r")\b"
     comparison = r"\b(compar(?:e|ison)|review|check|confirm|assess|verify|vergelijk|beoordeel)\b"
     disregard = r"\b(ignore|disregard|skip|negeer)\b"
     return any(
@@ -215,10 +130,50 @@ def _targeted_imaging_guidance(
     )
 
 
-def _case_tool_result(state: RunState, tool: str) -> ToolResult:
+def _lesion_comparison(mapping: Any) -> tuple[dict[str, Any], list[str]] | None:
+    """Derive a descriptive size comparison from a case's lesion mapping.
+
+    Cases that ship a mapping with every baseline and response diameter measured
+    get this derived context and the matching observations. A case with no mapping,
+    or with sites still unmeasured, is left to its own recorded observations rather
+    than given a sum that would misrepresent partial data.
+    """
+    if not isinstance(mapping, list) or not mapping:
+        return None
+    measured: list[tuple[float, float]] = []
+    for row in mapping:
+        if not isinstance(row, dict):
+            return None
+        first, last = row.get("baseline_diameter_mm"), row.get("response_diameter_mm")
+        if not isinstance(first, int | float) or not isinstance(last, int | float):
+            return None
+        measured.append((first, last))
+    baseline = sum(first for first, _ in measured)
+    response = sum(last for _, last in measured)
+    if not baseline:
+        return None
+    comparison = {
+        "mapped_site_count": len(mapping),
+        "baseline_diameter_sum_mm": baseline,
+        "response_diameter_sum_mm": response,
+        "diameter_sum_change_pct": round((response - baseline) / baseline * 100, 1),
+        "method": "Descriptive sum of nine MRI longest diameters, NOT a formal RECIST "
+        "target set or measured volumetry; CT partial response is source-reported.",
+        "lesion_mapping": mapping,
+    }
+    observations = [
+        f"All {len(mapping)} original MRI liver sites remain represented.",
+        f"Nine-site descriptive diameter sum {baseline} → {response} mm; "
+        "not a formal RECIST calculation.",
+        "CT reports partial response; S1-IVC 3 mm, S4a-MHV 2 mm and a stable "
+        "5 mm lung nodule require explicit review.",
+    ]
+    return comparison, observations
+
+
+def _tool_result(state: RunState, tool: str) -> ToolResult:
     definition = state.definition
     runtime = definition.runtime
-    assert runtime is not None
     conditional = (
         state.role in APPLICABILITY_ROLES
         and tool == f"assess_{state.role.value}_applicability"
@@ -234,6 +189,9 @@ def _case_tool_result(state: RunState, tool: str) -> ToolResult:
     context = deepcopy(definition.contexts[state.role])
     summary = f"Reviewed the supplied {definition.labels[state.role].lower()} record."
     if state.role == Role.RADIOLOGY:
+        if derived := _lesion_comparison(deepcopy(definition.case.get("lesion_mapping"))):
+            context["derived_comparison"], extra = derived
+            observations.extend(extra)
         if reviewed:
             summary = (
                 "Targeted human imaging review considered; anatomical and physiological "
@@ -260,91 +218,6 @@ def _case_tool_result(state: RunState, tool: str) -> ToolResult:
         tool=tool, summary=summary, observations=observations, uncertainties=uncertainties,
         evidence=definition.role_evidence(state.role), context=context,
         conditional_applicability=conditional, targeted_imaging_review=reviewed,
-    )
-
-
-def _tool_result(state: RunState, tool: str) -> ToolResult:
-    if state.definition.runtime is not None:
-        return _case_tool_result(state, tool)
-    evidence = [_EVIDENCE_BY_ID[key].model_copy(deep=True) for key in ROLE_EVIDENCE_IDS[state.role]]
-    context = deepcopy(ROLE_CONTEXTS[state.role])
-    observations = [evidence[0].passage]
-    uncertainties: list[str] = []
-    conditional = tool.startswith("assess_") and tool.endswith("_applicability")
-    conditional = conditional and state.phase == "followup"
-    reviewed = False
-    summary = f"Inspected CURATED {ROLE_LABELS[state.role].lower()} data; no network lookup."
-
-    if state.role == Role.RADIOLOGY:
-        mapping = deepcopy(CASE["lesion_mapping"])
-        baseline_sum = sum(row["baseline_diameter_mm"] for row in mapping)
-        response_sum = sum(row["response_diameter_mm"] for row in mapping)
-        context["derived_comparison"] = {
-            "mapped_site_count": len(mapping),
-            "baseline_diameter_sum_mm": baseline_sum,
-            "response_diameter_sum_mm": response_sum,
-            "diameter_sum_change_pct": round((response_sum - baseline_sum) / baseline_sum * 100, 1),
-            "method": "Descriptive sum of nine MRI longest diameters, NOT a formal RECIST "
-            "target set or measured volumetry; CT partial response is source-reported.",
-            "lesion_mapping": mapping,
-        }
-        observations.extend(
-            [
-                f"All {len(mapping)} original MRI liver sites remain represented.",
-                f"Nine-site descriptive diameter sum {baseline_sum} → {response_sum} mm; "
-                "not a formal RECIST calculation.",
-                "CT reports partial response; S1-IVC 3 mm, S4a-MHV 2 mm and a stable "
-                "5 mm lung nodule require explicit review.",
-            ]
-        )
-        reviewed = state.phase == "followup" and _targeted_imaging_guidance(state.guidance)
-        uncertainties.extend(RESIDUAL_CONDITIONS)
-        if reviewed:
-            summary = (
-                "Targeted human liver-site/vascular/chest review considered; the blocking "
-                "discussion can move to conditional review, not certified clearance or surgery."
-            )
-        else:
-            uncertainties.append(
-                "Blocking imaging question needs human mapping/clearance/vessel/liver/lung review."
-            )
-    elif state.role in APPLICABILITY_ROLES:
-        uncertainties.extend(RESIDUAL_CONDITIONS)
-        if state.role == Role.ONCOLOGY:
-            observations.append(
-                "Major response does not settle biological utility of clearance after four "
-                "cycles; grade 2 rash/hypomagnesemia and grade 1 neuropathy affect sequencing."
-            )
-        if conditional:
-            observations.append(APPLICABILITY_CONDITION)
-            context["conditional_assessment"] = {
-                "direct_trial_match": False,
-                "resolved_question": (
-                    "Compare all three evidence settings; conditional review, no selected surgery"
-                ),
-                "conditions": [
-                    *RESIDUAL_CONDITIONS,
-                    "Clinician and patient review before any treatment",
-                    PROTOCOL_CONDITION,
-                ],
-            }
-            summary = APPLICABILITY_CONDITION
-        else:
-            uncertainties.append(
-                "A blocking applicability question remains and needs a further "
-                "specialty review before this option can be applied."
-            )
-    if state.role == Role.PROTOCOL or conditional:
-        uncertainties.append(PROTOCOL_CONDITION)
-    return ToolResult(
-        tool=tool,
-        summary=summary,
-        observations=observations,
-        uncertainties=uncertainties,
-        evidence=evidence,
-        context=context,
-        conditional_applicability=conditional,
-        targeted_imaging_review=reviewed,
     )
 
 
@@ -424,7 +297,7 @@ def _tools(role: Role) -> list[ToolParam]:
 def _messages(state: RunState) -> ResponseInputParam:
     definition = state.definition
     case = definition.case
-    prompts = definition.runtime.role_prompts if definition.runtime else ROLE_PROMPTS
+    prompts = definition.runtime.role_prompts
     metadata = case["source_metadata"]
     source_metadata = {
         "file": metadata["file"],
@@ -598,6 +471,58 @@ def _model_tool_output(result: ToolResult, *, compact: bool) -> dict[str, Any]:
             "Full quantitative scrutiny and source metadata remain in the evidence record "
             "and meeting export; passage and limitations are reproduced here."
         )
+    return output
+
+
+def _tool_message(state: RunState, result: ToolResult) -> dict[str, Any]:
+    """Render one tool result for the model, trimmed to what earlier results omitted.
+
+    The first tool result of a run carries every role field. Repeating those fields
+    for each later call spends the token budget without adding information, so later
+    results keep only their additions and refer back to that first output.
+    """
+    compact = state.definition.runtime.compact_context
+    output = _model_tool_output(result, compact=compact)
+    if len(state.results) <= 1:
+        return output
+    earlier = state.results[:-1]
+    output.pop("shared_evidence_limitations", None)
+    output["context"] = {
+        key: value for key, value in result.context.items()
+        if key not in state.definition.contexts[state.role]
+    }
+    output["context_reference"] = "Full role context in the first tool output"
+    seen_evidence = {item.id for previous in earlier for item in previous.evidence}
+    output["evidence"] = [
+        item.model_dump(mode="json") for item in result.evidence if item.id not in seen_evidence
+    ]
+    output["previously_returned_evidence_ids"] = [
+        item.id for item in result.evidence if item.id in seen_evidence
+    ]
+    if not compact:
+        return output
+    seen_observations = {value for previous in earlier for value in previous.observations}
+    seen_uncertainties = {value for previous in earlier for value in previous.uncertainties}
+    output["observations"] = [
+        value for value in result.observations
+        if value not in seen_observations and value != result.summary
+    ]
+    output["uncertainties"] = [
+        value for value in result.uncertainties if value not in seen_uncertainties
+    ]
+    output["previous_findings_reference"] = (
+        "All observations and uncertainties in earlier tool results "
+        "remain applicable; only additions are repeated here."
+    )
+    if assessment := output["context"].get("conditional_assessment"):
+        assessment = deepcopy(assessment)
+        assessment["conditions"] = [
+            value for value in assessment["conditions"] if value not in seen_uncertainties
+        ]
+        assessment["previous_conditions_reference"] = (
+            "Retain every uncertainty from the earlier tool results."
+        )
+        output["context"]["conditional_assessment"] = assessment
     return output
 
 
@@ -860,59 +785,7 @@ async def _azure_position(state: RunState, emit: Emit) -> Position:
                     raise AgentRuntimeError("Invalid or duplicate function-call identity.")
                 tool_call_ids.add(call.call_id)
                 result = await _execute_tool(state, call.name, call.arguments, emit)
-                output = _model_tool_output(
-                    result, compact=state.definition.runtime is not None,
-                )
-                if len(state.results) > 1:
-                    output.pop("shared_evidence_limitations", None)
-                    # The first tool returned every role field. Later results only add
-                    # derived context; full records remain available in that first output.
-                    output["context"] = {
-                        key: value for key, value in result.context.items()
-                        if key not in state.definition.contexts[state.role]
-                    }
-                    output["context_reference"] = "Full role context in the first tool output"
-                    previous_ids = {
-                        item.id for previous in state.results[:-1] for item in previous.evidence
-                    }
-                    output["evidence"] = [
-                        item.model_dump(mode="json") for item in result.evidence
-                        if item.id not in previous_ids
-                    ]
-                    output["previously_returned_evidence_ids"] = [
-                        item.id for item in result.evidence if item.id in previous_ids
-                    ]
-                    if state.definition.runtime is not None:
-                        previous_observations = {
-                            value for previous in state.results[:-1]
-                            for value in previous.observations
-                        }
-                        previous_uncertainties = {
-                            value for previous in state.results[:-1]
-                            for value in previous.uncertainties
-                        }
-                        output["observations"] = [
-                            value for value in result.observations
-                            if value not in previous_observations and value != result.summary
-                        ]
-                        output["uncertainties"] = [
-                            value for value in result.uncertainties
-                            if value not in previous_uncertainties
-                        ]
-                        output["previous_findings_reference"] = (
-                            "All observations and uncertainties in earlier tool results "
-                            "remain applicable; only additions are repeated here."
-                        )
-                        if assessment := output["context"].get("conditional_assessment"):
-                            assessment = deepcopy(assessment)
-                            assessment["conditions"] = [
-                                value for value in assessment["conditions"]
-                                if value not in previous_uncertainties
-                            ]
-                            assessment["previous_conditions_reference"] = (
-                                "Retain every uncertainty from the earlier tool results."
-                            )
-                            output["context"]["conditional_assessment"] = assessment
+                output = _tool_message(state, result)
                 messages.append(
                     {
                         "type": "function_call_output",
@@ -998,98 +871,27 @@ async def _limited_azure_position(state: RunState, emit: Emit) -> Position:
 
 def _rehearsal_position(state: RunState) -> Position:
     result = state.results[-1]
-    if runtime := state.definition.runtime:
-        recommendation = (
-            runtime.applicability_condition if result.conditional_applicability
-            else runtime.recommendations[state.role]
-        )
-        claims = [
-            Claim(claim=item.passage, evidence_ids=[item.id])
-            for item in result.evidence[:3]
-        ]
-        return Position(
-            role=state.role, case_id=state.case_id, position=runtime.assessments[state.role],
-            confidence=0.72, autonomy="AUTO" if state.role == Role.PATHOLOGY else "REVIEW",
-            claims=claims, uncertainties=list(result.uncertainties),
-            recommendation=recommendation,
-            questions_for_mdt=[str(state.definition.contexts[state.role]["question"])],
-            provenance=[key for claim in claims for key in claim.evidence_ids],
-            stance="CONDITIONAL", friction_keys=[],
-            trace=Trace(
-                assessment=runtime.assessments[state.role],
-                observations=list(result.observations), hypothesis=runtime.hypothesis,
-                uncertainties=list(result.uncertainties),
-                evidence_checking=[item.title for item in result.evidence],
-                next_action=recommendation,
-            ),
-        )
-    assessments: dict[Role, str] = {
-        Role.RADIOLOGY: "CT partial response; all nine liver sites need clearance review, "
-        "with vascular margins and the 5 mm lung nodule still uncertain.",
-        Role.ONCOLOGY: (
-            "Four-cycle response and ctDNA 0.42% leave local-treatment timing uncertain; "
-            "toxicity and perioperative sequencing need human review."
-        ),
-        Role.SURGERY: (
-            "Potential parenchymal-sparing clearance requires all nine sites, vascular safety "
-            "and >65% predicted remnant review; technical feasibility is not proven utility."
-        ),
-        Role.PATHOLOGY: (
-            "Colorectal biopsy supports BRAF V600E/pMMR-MSS disease; it cannot prove clearance."
-        ),
-        Role.RESEARCH: "BREAKWATER, CAIRO5 and PROVENC3 address different settings; "
-        "reviewed sources do not establish a combined conversion-surgery pathway.",
-        Role.PROTOCOL: (
-            "Reviewed Dutch BOM palliative advice is not local perioperative approval; "
-            "protocol access and treatment sequencing remain conditions."
-        ),
-        Role.PATIENT: (
-            "Discuss uncertain cure, operative burden, independence and avoiding permanent "
-            "stoma; support goals without inventing consent."
-        ),
-    }
-    claims = [Claim(claim=result.evidence[0].passage, evidence_ids=[result.evidence[0].id])]
-    if state.role in APPLICABILITY_ROLES:
-        claims.extend(
-            [
-                Claim(
-                    claim="BREAKWATER systemic efficacy, CAIRO5 conversion assessment and "
-                    "long-term survival limits, and Dutch BOM palliative advice do not "
-                    "establish a combined perioperative conversion-surgery pathway.",
-                    evidence_ids=[
-                        "CRC-BREAKWATER", "CRC-CAIRO5", "CRC-CAIRO5-LONGTERM", "CRC-NVMO-BOM",
-                    ],
-                ),
-                Claim(
-                    claim="PROVENC3 studied postoperative ctDNA prognosis in resected stage III "
-                    "colon cancer, not a binary threshold against conversion surgery in stage IV.",
-                    evidence_ids=["CRC-PROVENC3"],
-                ),
-            ]
-        )
+    runtime = state.definition.runtime
     recommendation = (
-        "For this demonstration MDT only: complete the relevant diagnostic and specialist review "
-        "before any treatment decision, with patient discussion."
+        runtime.applicability_condition if result.conditional_applicability
+        else runtime.recommendations[state.role]
     )
-    if result.conditional_applicability:
-        recommendation = APPLICABILITY_CONDITION
+    claims = [
+        Claim(claim=item.passage, evidence_ids=[item.id]) for item in result.evidence[:3]
+    ]
+    if state.role in APPLICABILITY_ROLES:
+        claims.extend(item.model_copy(deep=True) for item in runtime.applicability_claims)
     return Position(
-        role=state.role,
-        case_id=state.case_id,
-        position=assessments[state.role],
-        confidence=0.72,
-        autonomy="AUTO" if state.role == Role.PATHOLOGY else "REVIEW",
-        claims=claims,
-        uncertainties=list(result.uncertainties),
+        role=state.role, case_id=state.case_id, position=runtime.assessments[state.role],
+        confidence=0.72, autonomy="AUTO" if state.role == Role.PATHOLOGY else "REVIEW",
+        claims=claims, uncertainties=list(result.uncertainties),
         recommendation=recommendation,
-        questions_for_mdt=[str(ROLE_CONTEXTS[state.role]["question"])],
+        questions_for_mdt=[str(state.definition.contexts[state.role]["question"])],
         provenance=list(dict.fromkeys(key for claim in claims for key in claim.evidence_ids)),
-        stance="CONDITIONAL",
-        friction_keys=[],
+        stance="CONDITIONAL", friction_keys=[],
         trace=Trace(
-            assessment=assessments[state.role],
-            observations=list(result.observations),
-            hypothesis="Conditional work-up may establish an appropriate local-treatment option.",
+            assessment=runtime.assessments[state.role],
+            observations=list(result.observations), hypothesis=runtime.hypothesis,
             uncertainties=list(result.uncertainties),
             evidence_checking=[item.title for item in result.evidence],
             next_action=recommendation,
@@ -1131,9 +933,9 @@ def _validate_grounding(position: Position, state: RunState) -> None:
 def _safety_gates(position: Position, state: RunState) -> Position:
     result = position.model_copy(deep=True)
     runtime = state.definition.runtime
-    residual = runtime.residual_conditions if runtime else RESIDUAL_CONDITIONS
-    applicability = runtime.applicability_condition if runtime else APPLICABILITY_CONDITION
-    protocol = runtime.protocol_condition if runtime else PROTOCOL_CONDITION
+    residual = runtime.residual_conditions
+    applicability = runtime.applicability_condition
+    protocol = runtime.protocol_condition
     friction = set(result.friction_keys)
     if state.role == Role.RADIOLOGY:
         result.uncertainties = list(dict.fromkeys([*result.uncertainties, *residual]))

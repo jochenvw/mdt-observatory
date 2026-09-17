@@ -10,8 +10,9 @@ import yaml
 from conftest import source_digest
 
 from mdt import agents
+from mdt.case_registry import APPLICABILITY_ROLES, case_ids, get_case
 from mdt.models import Role
-from mdt.scenario import CASE, EVIDENCE, MEMORIES, ROLE_CONTEXTS
+from mdt.scenario import CASE, EVIDENCE, MEMORIES, ROLE_CONTEXTS, ROLE_PROMPTS
 
 SOURCE = Path(__file__).resolve().parents[1] / "case.md"
 
@@ -104,7 +105,7 @@ def test_no_old_lung_case_or_repetitive_label_leaks_into_runtime_content() -> No
     evidence = [item.model_dump(exclude={"synthetic"}) for item in EVIDENCE]
     text = json.dumps(
         [CASE, ROLE_CONTEXTS, evidence, [item.model_dump() for item in MEMORIES],
-         agents.ROLE_PROMPTS],
+         ROLE_PROMPTS],
         ensure_ascii=False,
     ).lower()
     for obsolete in (
@@ -164,3 +165,44 @@ def test_study_sources_have_independent_verification_and_separate_access_scopes(
     assert "randomized surgery-versus-no-surgery" in by_id["CRC-CAIRO5-LONGTERM"].passage
     assert "[Source-supplied reference; not independently verified]" in CASE["narrative"]
     assert all(item.id.startswith(("CRC-", "CASE-CRC-")) for item in EVIDENCE)
+
+
+def test_every_case_supplies_the_same_runtime_policy() -> None:
+    """The engine and specialist runtime must not need to know which case is loaded.
+
+    Each case carries its own prompts, conditions, review questions and proposal, so
+    adding a case is a content change. A case that fails this contract would force a
+    branch back into the shared runtime.
+    """
+    for case_id in case_ids():
+        runtime = get_case(case_id).runtime
+        assert set(runtime.role_prompts) == set(Role), case_id
+        assert set(runtime.assessments) == set(Role), case_id
+        assert set(runtime.recommendations) == set(Role), case_id
+        assert set(runtime.observations) == set(Role), case_id
+        assert set(runtime.frictions) == {"imaging", "applicability"}, case_id
+        assert runtime.residual_conditions and runtime.imaging_review_terms, case_id
+        assert runtime.proposal.title and runtime.proposal.summary, case_id
+        assert runtime.proposal.conditions, case_id
+        assert runtime.applicability_condition and runtime.protocol_condition, case_id
+        for claim in runtime.applicability_claims:
+            for role in APPLICABILITY_ROLES:
+                available = {item.id for item in get_case(case_id).role_evidence(role)}
+                assert set(claim.evidence_ids) <= available, (case_id, role)
+
+
+def test_a_partial_lesion_mapping_yields_no_derived_comparison() -> None:
+    """A mapping with unmeasured sites must not be summed into a misleading total."""
+    complete = [
+        {"baseline_diameter_mm": 10, "response_diameter_mm": 4},
+        {"baseline_diameter_mm": 30, "response_diameter_mm": 16},
+    ]
+    derived = agents._lesion_comparison(complete)
+    assert derived is not None
+    assert derived[0]["baseline_diameter_sum_mm"] == 40
+    assert derived[0]["response_diameter_sum_mm"] == 20
+    assert derived[0]["diameter_sum_change_pct"] == -50.0
+    partial = [*complete, {"baseline_diameter_mm": 12, "response_diameter_mm": None}]
+    assert agents._lesion_comparison(partial) is None
+    assert agents._lesion_comparison(None) is None
+    assert agents._lesion_comparison([]) is None

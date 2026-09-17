@@ -390,29 +390,9 @@ class Engine:
             for key in state.position.friction_keys:
                 keys.setdefault(key, []).append(state.role)
         definitions = {
-            "imaging": (
-                "Can all nine original liver sites be cleared while preserving vessels "
-                "and an adequate remnant, with the lung nodule still indeterminate?",
-                [
-                    "Human review of baseline-to-current mapping for all nine liver sites",
-                    "Segment 1 / IVC and segment 4a / middle hepatic vein margins",
-                    "Repeat thin-section chest CT; PET cannot classify the 5 mm nodule",
-                ],
-            ),
-            "applicability": (
-                "Does early response justify local treatment now, or is more systemic "
-                "disease control needed before conversion surgery?",
-                [
-                    "BREAKWATER systemic efficacy versus CAIRO5 conversion evidence",
-                    "PROVENC3 setting mismatch: ctDNA is not a binary surgical veto",
-                    "Primary-tumor sequence, perioperative treatment and patient goals",
-                ],
-            ),
+            key: (item.question, item.missing)
+            for key, item in get_case(str(meeting.case["id"])).runtime.frictions.items()
         }
-        if runtime := get_case(str(meeting.case["id"])).runtime:
-            definitions = {
-                key: (item.question, item.missing) for key, item in runtime.frictions.items()
-            }
         for friction in meeting.frictions:
             if friction.id.startswith("objection-"):
                 if set(friction.roles).issubset(reassessed):
@@ -456,30 +436,11 @@ class Engine:
             "Demonstration discussion only. A qualified MDT must independently verify "
             "diagnosis, current guidance, eligibility and patient consent."
         )
-        conditions.extend(
-            runtime.proposal.conditions if runtime else [
-                "Choose explicitly between local clearance now, additional systemic treatment "
-                "with reassessment, and a systemic disease-control strategy. No option is "
-                "authorized automatically by this proposal.",
-                "Complete local clearance remains conditional on every original liver site, "
-                "vessel safety, remnant function, repeat chest imaging and patient preference.",
-                "Persistent ctDNA and the stable 5 mm lung nodule remain unresolved risk "
-                "information, not proof of incurability or benignity.",
-            ]
-        )
+        conditions.extend(runtime.proposal.conditions)
         meeting.plan = Plan(
             version=meeting.plan.version + 1 if meeting.plan else 1,
-            title=(
-                runtime.proposal.title if runtime
-                else "Conditional colorectal conversion MDT proposal"
-            ),
-            summary=runtime.proposal.summary if runtime else (
-                "After four cycles of encorafenib, cetuximab and mFOLFOX6, nine bilobar "
-                "liver metastases appear potentially clearable, but technical feasibility "
-                "does not establish durable disease control. Review local treatment now "
-                "against additional systemic therapy and deferred local treatment. "
-                "The source's liver-first preference is conditional, not an automatic decision."
-            ),
+            title=runtime.proposal.title,
+            summary=runtime.proposal.summary,
             actions=[f"{meeting.roles[p.role].label}: {p.recommendation}" for p in positions],
             conditions=conditions,
             evidence_ids=list(

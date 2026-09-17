@@ -4,7 +4,7 @@ import hmac
 import os
 import time
 from collections import defaultdict
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from functools import partial
 from pathlib import Path
@@ -72,6 +72,49 @@ def valid_cookie(value: str, secret: str) -> bool:
         return False
     age = int(time.time()) - int(timestamp)
     return 0 <= age < 43200 and hmac.compare_digest(value, cookie_value(secret, int(timestamp)))
+
+
+def snapshot_stream(
+    request: Request,
+    queue: asyncio.Queue[str],
+    event: str,
+    token: str,
+    release: Callable[[], None],
+) -> StreamingResponse:
+    """Stream queued snapshots to one screen until it disconnects or its session expires.
+
+    Heartbeats keep the connection open through idle periods and are the point at
+    which an expired presenter session is noticed and the stream closed.
+    """
+
+    async def snapshots() -> AsyncIterator[str]:
+        try:
+            while not await request.is_disconnected():
+                try:
+                    snapshot = await asyncio.wait_for(queue.get(), timeout=15)
+                    yield f"event: {event}\ndata: {snapshot}\n\n"
+                except TimeoutError:
+                    if token and not valid_cookie(request.cookies.get(COOKIE, ""), token):
+                        return
+                    yield ": heartbeat\n\n"
+        finally:
+            release()
+
+    return StreamingResponse(
+        snapshots(),
+        media_type="text/event-stream",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+    )
+
+
+def _discard_room(service: Engine, queue: asyncio.Queue[str]) -> None:
+    service.room_subscribers.discard(queue)
+
+
+def _discard_meeting(service: Engine, meeting_id: str, queue: asyncio.Queue[str]) -> None:
+    service.subscribers[meeting_id].discard(queue)
+    if not service.subscribers[meeting_id]:
+        del service.subscribers[meeting_id]
 
 
 def get_engine(request: Request) -> Engine:
@@ -227,26 +270,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
         queue: asyncio.Queue[str] = asyncio.Queue(maxsize=2)
         service.room_subscribers.add(queue)
         queue.put_nowait(service.room_snapshot())
-
-        async def snapshots() -> AsyncIterator[str]:
-            try:
-                while not await request.is_disconnected():
-                    try:
-                        snapshot = await asyncio.wait_for(queue.get(), timeout=15)
-                        yield f"event: room\ndata: {snapshot}\n\n"
-                    except TimeoutError:
-                        if config.presenter_token and not valid_cookie(
-                            request.cookies.get(COOKIE, ""), config.presenter_token
-                        ):
-                            return
-                        yield ": heartbeat\n\n"
-            finally:
-                service.room_subscribers.discard(queue)
-
-        return StreamingResponse(
-            snapshots(),
-            media_type="text/event-stream",
-            headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+        return snapshot_stream(
+            request, queue, "room", config.presenter_token, lambda: _discard_room(service, queue)
         )
 
     @application.post("/api/room/clear", dependencies=protected)
@@ -287,28 +312,12 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
         queue: asyncio.Queue[str] = asyncio.Queue(maxsize=2)
         service.subscribers.setdefault(meeting_id, set()).add(queue)
         queue.put_nowait(initial.model_dump_json())
-
-        async def snapshots() -> AsyncIterator[str]:
-            try:
-                while not await request.is_disconnected():
-                    try:
-                        snapshot = await asyncio.wait_for(queue.get(), timeout=15)
-                        yield f"event: state\ndata: {snapshot}\n\n"
-                    except TimeoutError:
-                        if config.presenter_token and not valid_cookie(
-                            request.cookies.get(COOKIE, ""), config.presenter_token
-                        ):
-                            return
-                        yield ": heartbeat\n\n"
-            finally:
-                service.subscribers[meeting_id].discard(queue)
-                if not service.subscribers[meeting_id]:
-                    del service.subscribers[meeting_id]
-
-        return StreamingResponse(
-            snapshots(),
-            media_type="text/event-stream",
-            headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+        return snapshot_stream(
+            request,
+            queue,
+            "state",
+            config.presenter_token,
+            lambda: _discard_meeting(service, meeting_id, queue),
         )
 
     @application.post("/api/meetings/{meeting_id}/steer", dependencies=protected)

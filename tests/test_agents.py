@@ -281,9 +281,11 @@ async def test_all_roles_have_isolated_context_tools_and_grounded_positions(role
     assert result.role == role
     assert result.case_id == CASE["id"]
     assert set(ROLE_CONTEXTS) == set(ROLE_LABELS) == set(Role)
-    assert len(set(agents.ROLE_PROMPTS.values())) == 7
+    assert len(set(get_case(CASE["id"]).runtime.role_prompts.values())) == 7
     assert result.provenance
-    assert set(result.provenance) <= set(agents.ROLE_EVIDENCE_IDS[role])
+    assert set(result.provenance) <= {
+        item.id for item in get_case(CASE["id"]).role_evidence(role)
+    }
     assert {payload["tool"] for event, payload in events if event == "ToolStarted"} <= set(
         agents.ROLE_TOOL_ALLOWLISTS[role]
     )
@@ -392,8 +394,8 @@ async def test_applicability_requires_a_followup_assessment_and_retains_conditio
     followup = await _run(role, phase="followup")
     assert "applicability" not in followup.friction_keys
     assert followup.stance == "CONDITIONAL"
-    assert agents.APPLICABILITY_CONDITION in followup.uncertainties
-    assert agents.PROTOCOL_CONDITION in followup.uncertainties
+    assert get_case(CASE["id"]).runtime.applicability_condition in followup.uncertainties
+    assert get_case(CASE["id"]).runtime.protocol_condition in followup.uncertainties
 
 
 @pytest.mark.parametrize("role", [Role.RADIOLOGY, *agents.APPLICABILITY_ROLES])
@@ -411,8 +413,10 @@ async def test_crc_residual_conditions_survive_model_omission_and_followup(role:
     assert result.autonomy == "REVIEW"
     assert result.stance == "CONDITIONAL"
     assert not result.friction_keys
-    assert set(agents.RESIDUAL_CONDITIONS) <= set(result.uncertainties)
-    assert set(agents.RESIDUAL_CONDITIONS) <= set(result.trace.uncertainties)
+    assert set(get_case(CASE["id"]).runtime.residual_conditions) <= set(result.uncertainties)
+    assert set(get_case(CASE["id"]).runtime.residual_conditions) <= set(
+        result.trace.uncertainties
+    )
 
 
 @pytest.mark.parametrize("role", list(Role))
@@ -646,7 +650,8 @@ async def test_model_step_budget_forces_final_structured_output(
     assert all(not set(item["context"]) & set(ROLE_CONTEXTS[role]) for item in outputs[1:])
     assert all(item["evidence"] == [] for item in outputs[1:])
     assert all(
-        set(item["previously_returned_evidence_ids"]) == set(agents.ROLE_EVIDENCE_IDS[role])
+        set(item["previously_returned_evidence_ids"])
+        == {item.id for item in get_case(CASE["id"]).role_evidence(role)}
         for item in outputs[1:]
     )
 

@@ -8,8 +8,26 @@ from typing import Any, Self
 
 from pydantic import TypeAdapter, model_validator
 
-from mdt.models import Contract, Evidence, Memory, Role
-from mdt.scenario import CASE, EVIDENCE, MEMORIES, ROLE_CONTEXTS, ROLE_LABELS
+from mdt.models import Claim, Contract, Evidence, Memory, Role
+from mdt.scenario import (
+    APPLICABILITY_CLAIMS,
+    APPLICABILITY_CONDITION,
+    ASSESSMENTS,
+    CASE,
+    EVIDENCE,
+    FRICTIONS,
+    HYPOTHESIS,
+    IMAGING_REVIEW_TERMS,
+    MEMORIES,
+    OBSERVATIONS,
+    PROPOSAL,
+    PROTOCOL_CONDITION,
+    RECOMMENDATION,
+    RESIDUAL_CONDITIONS,
+    ROLE_CONTEXTS,
+    ROLE_LABELS,
+    ROLE_PROMPTS,
+)
 
 APPLICABILITY_ROLES = frozenset({Role.ONCOLOGY, Role.RESEARCH, Role.PROTOCOL, Role.SURGERY})
 
@@ -37,6 +55,13 @@ class CaseRuntime(Contract):
     hypothesis: str
     frictions: dict[str, FrictionDefinition]
     proposal: ProposalDefinition
+    # Large dossiers are summarised before they reach the model so the token budget
+    # is spent on findings rather than repeated source text. Cases with a compact
+    # record send it whole.
+    compact_context: bool = True
+    # Claims every applicability role publishes in addition to those drawn from the
+    # records its own tools returned.
+    applicability_claims: list[Claim] = []
 
     @model_validator(mode="after")
     def complete_roles(self) -> Self:
@@ -80,7 +105,7 @@ class CaseDefinition:
     evidence: list[Evidence]
     memories: list[Memory]
     labels: dict[Role, str]
-    runtime: CaseRuntime | None = None
+    runtime: CaseRuntime
 
     def role_evidence(self, role: Role) -> list[Evidence]:
         record_url = f"case://{self.case['id']}/{role.value}"
@@ -93,8 +118,25 @@ class CaseDefinition:
 
 @cache
 def _catalog() -> dict[str, CaseDefinition]:
+    packaged_runtime = CaseRuntime(
+        role_prompts=ROLE_PROMPTS,
+        assessments=ASSESSMENTS,
+        recommendations=dict.fromkeys(Role, RECOMMENDATION),
+        observations=OBSERVATIONS,
+        residual_conditions=RESIDUAL_CONDITIONS,
+        applicability_condition=APPLICABILITY_CONDITION,
+        protocol_condition=PROTOCOL_CONDITION,
+        imaging_review_terms=IMAGING_REVIEW_TERMS,
+        hypothesis=HYPOTHESIS,
+        frictions={key: FrictionDefinition(**value) for key, value in FRICTIONS.items()},
+        proposal=ProposalDefinition(**PROPOSAL),
+        compact_context=False,
+        applicability_claims=[Claim(**item) for item in APPLICABILITY_CLAIMS],
+    )
     definitions = {
-        str(CASE["id"]): CaseDefinition(CASE, ROLE_CONTEXTS, EVIDENCE, MEMORIES, ROLE_LABELS),
+        str(CASE["id"]): CaseDefinition(
+            CASE, ROLE_CONTEXTS, EVIDENCE, MEMORIES, ROLE_LABELS, packaged_runtime
+        ),
     }
     directory = files("mdt").joinpath("dossiers")
     external = {item.id: item for item in EVIDENCE if item.kind != "CASE_RECORD"}

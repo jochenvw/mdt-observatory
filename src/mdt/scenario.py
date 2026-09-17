@@ -344,6 +344,189 @@ EVIDENCE: list[Evidence] = [
            ),
 ]
 
+# ---------------------------------------------------------------------------
+# Runtime policy for this case.
+#
+# Every case supplies the same policy fields, so the engine and the specialist
+# runtime stay case-agnostic: adding a case means adding its content, not adding
+# a branch. The newer cases ship this as JSON; this one builds it in Python
+# because its records are assembled here.
+# ---------------------------------------------------------------------------
+
+ROLE_PROMPTS: dict[Role, str] = {
+    Role.RADIOLOGY: (
+        "You are the radiology specialist. Map all nine baseline and response liver sites, "
+        "including sites without an allocated treatment. Review acquisition, vessels, remnant "
+        "and chest. S1-IVC 3 mm and S4a-MHV 2 mm remain concerns. The stable 5 mm lung nodule "
+        "is below PET resolution, not proven benign. Request targeted human review."
+    ),
+    Role.ONCOLOGY: (
+        "You are the medical oncology specialist. Assess four cycles of encorafenib/cetuximab/"
+        "mFOLFOX6, response, persistent ctDNA, rash, neuropathy and hypomagnesemia. Compare "
+        "local clearance review now versus more systemic therapy versus selective consolidation. "
+        "Preserve source date ambiguities and perioperative uncertainty; do not select surgery."
+    ),
+    Role.SURGERY: (
+        "You are the HPB/colorectal surgical specialist, incorporating interventional radiology "
+        "and radiation oncology consultation perspectives, not extra human votes. Review all "
+        "nine sites, S1-IVC/S4a-MHV margins, heat-sink, >65% predicted remnant, liver-first/"
+        "synchronous/staged colectomy and SBRT contingency. Technical feasibility is not "
+        "oncological utility. A source-preferred conditional strategy is not approval to operate."
+    ),
+    Role.PATHOLOGY: (
+        "You are the pathology specialist. Assess colorectal morphology, pMMR/MSS, BRAF V600E, "
+        "APC/TP53/SMAD4 variants, VAFs and negative predictive markers. Preserve tissue for "
+        "response assessment. Biopsy cannot establish clearance, operability or consent."
+    ),
+    Role.RESEARCH: (
+        "You are the evidence researcher. Compare BREAKWATER, CAIRO5 original and long-term "
+        "interpretations, and PROVENC3. They answer distinct systemic/conversion/stage III "
+        "prognostic questions. Distinguish the original CAIRO5 abstract from its full-text "
+        "long-term report; use independently reviewed evidence with actual access labels. "
+        "Never turn case-source reference tokens into citations or invent URLs/DOIs/effects. "
+        "Prefer NL/EU "
+        "context. Persistent ctDNA is not an absolute conversion-surgery veto."
+    ),
+    Role.PROTOCOL: (
+        "You are the protocol specialist. Separate current Dutch/EU guidance, authorisation, "
+        "trial protocols and local policy. Dutch BOM advice was independently reviewed but is "
+        "palliative systemic guidance, not surgery approval. Do not pretend to search networks. "
+        "Retain PROTOCOL_NOT_PUBLIC and explicit gaps in perioperative "
+        "BRAF/EGFR interruption/restart and colorectal sequencing."
+    ),
+    Role.PATIENT: (
+        "You represent only the fictional patient's documented priorities, not a real person. "
+        "Explain uncertain cure, operative burden, independence and avoiding permanent stoma. "
+        "Use partner/two adult children and supportive care without demographic stereotypes. "
+        "Invite a human preference discussion; do not invent preferences or consent."
+    ),
+}
+
+PROTOCOL_CONDITION = (
+    "PROTOCOL_NOT_PUBLIC: obtain and review the fictional local pathway before treatment; "
+    "its unavailability remains a nonblocking plan condition, not a resolved lookup."
+)
+APPLICABILITY_CONDITION = (
+    "Conditional applicability only: BREAKWATER concerns systemic efficacy, CAIRO5 conversion "
+    "assessment with different induction and uncertain survival translation, and PROVENC3 "
+    "postoperative stage III ctDNA prognosis, not a stage IV surgical veto. Independently "
+    "reviewed articles and Dutch BOM advice establish no combined perioperative pathway. "
+    "Original CAIRO5 is abstract-only; full protocol/local pathway review remains limited. "
+    "Compare all three "
+    "management alternatives with humans; no automatic surgical selection."
+)
+
+ASSESSMENTS: dict[Role, str] = {
+    Role.RADIOLOGY: "CT partial response; all nine liver sites need clearance review, "
+    "with vascular margins and the 5 mm lung nodule still uncertain.",
+    Role.ONCOLOGY: (
+        "Four-cycle response and ctDNA 0.42% leave local-treatment timing uncertain; "
+        "toxicity and perioperative sequencing need human review."
+    ),
+    Role.SURGERY: (
+        "Potential parenchymal-sparing clearance requires all nine sites, vascular safety "
+        "and >65% predicted remnant review; technical feasibility is not proven utility."
+    ),
+    Role.PATHOLOGY: (
+        "Colorectal biopsy supports BRAF V600E/pMMR-MSS disease; it cannot prove clearance."
+    ),
+    Role.RESEARCH: "BREAKWATER, CAIRO5 and PROVENC3 address different settings; "
+    "reviewed sources do not establish a combined conversion-surgery pathway.",
+    Role.PROTOCOL: (
+        "Reviewed Dutch BOM palliative advice is not local perioperative approval; "
+        "protocol access and treatment sequencing remain conditions."
+    ),
+    Role.PATIENT: (
+        "Discuss uncertain cure, operative burden, independence and avoiding permanent "
+        "stoma; support goals without inventing consent."
+    ),
+}
+
+RECOMMENDATION = (
+    "For this demonstration MDT only: complete the relevant diagnostic and specialist review "
+    "before any treatment decision, with patient discussion."
+)
+HYPOTHESIS = "Conditional work-up may establish an appropriate local-treatment option."
+
+# Human guidance only counts as a targeted imaging review when it asks for a
+# comparison of one of these structures.
+IMAGING_REVIEW_TERMS = [
+    "clearance", "mapping", "map", "vessel", "vessels", "vascular", "liver", "lung", "chest",
+    "remnant", "IVC", "MHV", "lever", "longnodus", "vaatrelaties",
+]
+
+FRICTIONS: dict[str, dict[str, Any]] = {
+    "imaging": {
+        "question": "Can all nine original liver sites be cleared while preserving vessels "
+        "and an adequate remnant, with the lung nodule still indeterminate?",
+        "missing": [
+            "Human review of baseline-to-current mapping for all nine liver sites",
+            "Segment 1 / IVC and segment 4a / middle hepatic vein margins",
+            "Repeat thin-section chest CT; PET cannot classify the 5 mm nodule",
+        ],
+    },
+    "applicability": {
+        "question": "Does early response justify local treatment now, or is more systemic "
+        "disease control needed before conversion surgery?",
+        "missing": [
+            "BREAKWATER systemic efficacy versus CAIRO5 conversion evidence",
+            "PROVENC3 setting mismatch: ctDNA is not a binary surgical veto",
+            "Primary-tumor sequence, perioperative treatment and patient goals",
+        ],
+    },
+}
+
+PROPOSAL: dict[str, Any] = {
+    "title": "Conditional colorectal conversion MDT proposal",
+    "summary": (
+        "After four cycles of encorafenib, cetuximab and mFOLFOX6, nine bilobar "
+        "liver metastases appear potentially clearable, but technical feasibility "
+        "does not establish durable disease control. Review local treatment now "
+        "against additional systemic therapy and deferred local treatment. "
+        "The source's liver-first preference is conditional, not an automatic decision."
+    ),
+    "conditions": [
+        "Choose explicitly between local clearance now, additional systemic treatment "
+        "with reassessment, and a systemic disease-control strategy. No option is "
+        "authorized automatically by this proposal.",
+        "Complete local clearance remains conditional on every original liver site, "
+        "vessel safety, remnant function, repeat chest imaging and patient preference.",
+        "Persistent ctDNA and the stable 5 mm lung nodule remain unresolved risk "
+        "information, not proof of incurability or benignity.",
+    ],
+}
+
+# Claims every applicability role must publish for this case, in addition to the
+# claims drawn from the records its own tools returned.
+APPLICABILITY_CLAIMS: list[dict[str, Any]] = [
+    {
+        "claim": "BREAKWATER systemic efficacy, CAIRO5 conversion assessment and "
+        "long-term survival limits, and Dutch BOM palliative advice do not "
+        "establish a combined perioperative conversion-surgery pathway.",
+        "evidence_ids": ["CRC-BREAKWATER", "CRC-CAIRO5", "CRC-CAIRO5-LONGTERM", "CRC-NVMO-BOM"],
+    },
+    {
+        "claim": "PROVENC3 studied postoperative ctDNA prognosis in resected stage III "
+        "colon cancer, not a binary threshold against conversion surgery in stage IV.",
+        "evidence_ids": ["CRC-PROVENC3"],
+    },
+]
+
+_CASE_RECORD_PASSAGES = {
+    item.url.rsplit("/", 1)[-1]: item.passage for item in EVIDENCE if item.kind == "CASE_RECORD"
+}
+_EXTRA_OBSERVATIONS: dict[Role, list[str]] = {
+    Role.ONCOLOGY: [
+        "Major response does not settle biological utility of clearance after four "
+        "cycles; grade 2 rash/hypomagnesemia and grade 1 neuropathy affect sequencing."
+    ],
+}
+# Radiology gains further observations at run time, derived from the lesion mapping.
+OBSERVATIONS: dict[Role, list[str]] = {
+    role: [_CASE_RECORD_PASSAGES[role.value], *_EXTRA_OBSERVATIONS.get(role, [])] for role in Role
+}
+
+
 MEMORIES: list[Memory] = [
     Memory(id="MEM-CRC-MAPPING", role=Role.RADIOLOGY, category="CLINICIAN_PREFERENCE",
            text="Review all nine original liver sites, vascular distances and chest uncertainty.",
