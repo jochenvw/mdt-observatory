@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { Activity, ArrowUpRight, BookOpen, Check, ChevronRight, CircleDot, Dna, Heart, Microscope, ScanLine, Scissors, ShieldCheck, X } from 'lucide-react';
+import { Activity, ArrowUpRight, BookOpen, Check, ChevronRight, CircleDot, Heart, Microscope, ScanLine, Scissors, ShieldCheck, X } from 'lucide-react';
 import { label, safeUrl, text } from './helpers';
 import type { Data, Evidence, Meeting, Role } from './types';
 import { clinicalCaseKind } from './caseProfiles';
@@ -38,7 +38,7 @@ export function Status({ value }: { value: string }) {
   return <Badge tone={tone} pulse={working}>{statusLabel(value)}</Badge>;
 }
 export function SectionHeading({ eyebrow, title, aside }: { eyebrow?: string; title: string; aside?: ReactNode }) {
-  return <div className="section-heading mb-5 flex items-center justify-between gap-4 [&_.eyebrow]:mb-1 [&>svg]:text-[var(--cp-role,var(--cp-accent))]"><div>{eyebrow && <p className="eyebrow font-mono text-[10px] leading-relaxed tracking-widest text-cp-text-soft">{eyebrow}</p>}<h2>{title}</h2></div>{aside}</div>;
+  return <div className="section-heading mb-5 flex items-center justify-between gap-4 [&_.eyebrow]:mb-1 [&>svg]:text-[var(--cp-role,var(--cp-accent))]"><div>{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h2>{title}</h2></div>{aside}</div>;
 }
 export function Empty({ children }: { children: ReactNode }) {
   return <div className="empty flex items-center gap-3 py-5 text-sm leading-7 text-cp-text-soft [&_svg]:text-cp-border-strong"><CircleDot size={20} /><p>{children}</p></div>;
@@ -63,7 +63,7 @@ export function Modal({ title, children, close, wide = false, testId }: { title:
     return () => { dialog?.close(); previous?.focus(); };
   }, []);
   return <dialog data-testid={testId} ref={ref} className={`drawer fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-dvh w-full max-w-[560px] overflow-y-auto border-0 border-l border-cp-border bg-cp-surface p-0 text-cp-text shadow-[var(--cp-shadow)] backdrop:bg-cp-overlay ${wide ? 'wide max-w-[720px]!' : ''}`} aria-label={title} onCancel={event => { event.preventDefault(); close(); }} onClick={event => { if (event.target === event.currentTarget) close(); }}>
-    <div className="drawer-content min-h-full p-5 sm:p-7 [&>p]:my-4 [&>p]:leading-8 [&>h3]:my-5 [&>form]:mt-5"><div className="drawer-heading mb-6 flex items-center justify-between gap-4 border-b border-cp-border pb-5 [&_h2]:mt-1 [&_h2]:text-2xl"><div><p className="eyebrow font-mono text-[10px] leading-relaxed tracking-widest text-cp-text-soft">INSPECTABLE BY DESIGN</p><h2>{title}</h2></div><button className="icon-button inline-flex size-9 shrink-0 items-center justify-center rounded-lg border-0! bg-[inherit]! text-cp-text-muted hover:bg-cp-surface-soft! hover:text-cp-accent" onClick={close} aria-label="Close panel"><X size={20} /></button></div>{children}</div>
+    <div className="drawer-content min-h-full p-5 sm:p-7 [&>p]:my-4 [&>p]:leading-8 [&>h3]:my-5 [&>form]:mt-5"><div className="drawer-heading mb-6 flex items-center justify-between gap-4 border-b border-cp-border pb-5 [&_h2]:mt-1 [&_h2]:text-2xl"><div><p className="eyebrow">INSPECTABLE BY DESIGN</p><h2>{title}</h2></div><button className="icon-button" onClick={close} aria-label="Close panel"><X size={20} /></button></div>{children}</div>
   </dialog>;
 }
 export interface EvidenceSelection { ids: string[]; claim?: string }
@@ -73,7 +73,7 @@ export function EvidenceDrawer({ selection, evidence, close }: { selection: Evid
     <div className="provenance-chain mb-5 flex items-center gap-2 text-[10px] uppercase tracking-wider text-cp-accent"><span>Claim</span><ChevronRight size={14} /><span>Evidence</span><ChevronRight size={14} /><span>Source & scrutiny</span></div>
     {selection.claim && <blockquote className="selected-claim text-lg! font-medium">{selection.claim}</blockquote>}
     {sources.length === 0 && <Empty>No evidence has been retrieved yet.</Empty>}
-    {sources.map((source, index) => source ? <EvidenceDetail key={source.id} source={source} /> : <div className="alert mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-cp-danger bg-cp-surface p-4 text-sm text-cp-danger [&>span]:min-w-0 [&>span]:flex-1 [&>span]:break-words" key={selection.ids[index]}>Source {recordText(selection.ids[index])} is not available in this snapshot. This claim cannot yet be verified.</div>)}
+    {sources.map((source, index) => source ? <EvidenceDetail key={source.id} source={source} /> : <div className="alert" key={selection.ids[index]}>Source {recordText(selection.ids[index])} is not available in this snapshot. This claim cannot yet be verified.</div>)}
   </Modal>;
 }
 function EvidenceDetail({ source }: { source: Evidence }) {
@@ -86,14 +86,11 @@ function EvidenceDetail({ source }: { source: Evidence }) {
     <h4>Supporting passage / data</h4><blockquote>{source.passage || 'No supporting passage was supplied.'}</blockquote>
     {Object.keys(source.scrutiny).length > 0 && <><h4>Critical appraisal</h4><DataFields data={source.scrutiny} compact /></>}
     {source.limitations.length > 0 && <><h4>Limitations & applicability</h4><BulletList items={source.limitations} /></>}
-    {url ? <a className="button inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-cp-border px-4 py-2 text-xs font-semibold secondary bg-cp-surface text-cp-text hover:bg-cp-surface-soft" href={url} target="_blank" rel="noopener noreferrer">Open original source <ArrowUpRight size={16} /></a> : <p className="muted text-sm leading-7 text-cp-text-muted">No safe HTTPS source link available.</p>}
+    {url ? <a className="button secondary" href={url} target="_blank" rel="noopener noreferrer">Open original source <ArrowUpRight size={16} /></a> : <p className="muted text-sm leading-7 text-cp-text-muted">No safe HTTPS source link available.</p>}
   </article>;
 }
 export function EvidenceTable({ evidence, inspect }: { evidence: Evidence[]; inspect: (selection: EvidenceSelection) => void }) {
-  return evidence.length ? <div className="table-scroll relative max-w-full overflow-x-auto"><table><caption className="sr-only">Evidence sources, geographical context, access and patient applicability</caption><thead><tr><th>Source / study</th><th>Context</th><th>Access</th><th>Patient fit</th><th><span className="sr-only">Inspect</span></th></tr></thead><tbody>{evidence.map(source => <tr key={source.id}><td><strong>{source.title}</strong><small>{source.authority} · {source.date}</small></td><td><Badge>{source.region}</Badge></td><td>{label(source.access)}</td><td><Badge tone={source.patient_match === 'HIGH' ? 'success' : 'warning'}>{label(source.patient_match)}</Badge></td><td><button className="icon-button inline-flex size-9 shrink-0 items-center justify-center rounded-lg border-0! bg-[inherit]! text-cp-text-muted hover:bg-cp-surface-soft! hover:text-cp-accent" aria-label={`Inspect ${source.title}`} onClick={() => inspect({ ids: [source.id] })}><ArrowUpRight size={18} /></button></td></tr>)}</tbody></table></div> : <Empty>Sources will appear as specialist agents retrieve and scrutinize evidence.</Empty>;
-}
-export function ContextPanel({ context, title, icon = false }: { context: Data; title: string; icon?: boolean }) {
-  return <section className="panel min-w-0 rounded-2xl border border-cp-border bg-cp-surface p-5 sm:p-6 context-panel"><SectionHeading eyebrow="ROLE-SCOPED PATIENT CONTEXT" title={title} aside={icon ? <Dna size={22} /> : undefined} />{Object.keys(context).length ? <DataFields data={context} /> : <Empty>Context activates with the patient case.</Empty>}</section>;
+  return evidence.length ? <div className="table-scroll relative max-w-full overflow-x-auto"><table><caption className="sr-only">Evidence sources, geographical context, access and patient applicability</caption><thead><tr><th>Source / study</th><th>Context</th><th>Access</th><th>Patient fit</th><th><span className="sr-only">Inspect</span></th></tr></thead><tbody>{evidence.map(source => <tr key={source.id}><td><strong>{source.title}</strong><small>{source.authority} · {source.date}</small></td><td><Badge>{source.region}</Badge></td><td>{label(source.access)}</td><td><Badge tone={source.patient_match === 'HIGH' ? 'success' : 'warning'}>{label(source.patient_match)}</Badge></td><td><button className="icon-button" aria-label={`Inspect ${source.title}`} onClick={() => inspect({ ids: [source.id] })}><ArrowUpRight size={18} /></button></td></tr>)}</tbody></table></div> : <Empty>Sources will appear as specialist agents retrieve and scrutinize evidence.</Empty>;
 }
 export function eventSummary(payload: Data, type: string, role?: Role): string {
   return clinicalActivity({ ...payload, type }, role).summary;

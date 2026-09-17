@@ -110,6 +110,38 @@ html[data-theme="dark"] {
   td small { @apply mt-1 block text-[10px] text-cp-text-soft; }
 }
 
+/* Shared component utilities.
+ *
+ * The markup already carried these names; each call site also repeated the same
+ * utility string, so a restyle meant editing every occurrence. Defining them once
+ * keeps one source of truth and leaves the class names that layout selectors and
+ * tests depend on in place. */
+@utility eyebrow {
+  @apply font-mono text-[10px] leading-relaxed tracking-widest text-cp-text-soft;
+}
+@utility button {
+  @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-cp-border px-4 py-2 text-xs font-semibold;
+}
+@utility primary {
+  @apply border-cp-accent! bg-cp-accent! text-cp-accent-fg! hover:bg-cp-accent-hover!;
+}
+@utility secondary {
+  @apply bg-cp-surface text-cp-text hover:bg-cp-surface-soft;
+}
+@utility large {
+  @apply min-h-12! px-6! py-3! text-sm!;
+}
+@utility icon-button {
+  @apply inline-flex size-9 shrink-0 items-center justify-center rounded-lg border-0! bg-[inherit]! text-cp-text-muted hover:bg-cp-surface-soft! hover:text-cp-accent;
+}
+@utility text-button {
+  @apply inline-flex items-center gap-1.5 border-0! bg-[inherit]! py-1 text-xs font-medium text-cp-accent hover:underline;
+}
+@utility alert {
+  @apply mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-cp-danger bg-cp-surface p-4 text-sm text-cp-danger;
+  & > span { @apply min-w-0 flex-1 break-words; }
+}
+
 /* The anatomical illustration is schematic, not measured image geometry. */
 .scan-grid { fill: none; stroke: var(--cp-border); stroke-width: .35; }
 .body-outer { fill: var(--cp-border); stroke: var(--cp-border-strong); stroke-width: 1; }
