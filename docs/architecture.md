@@ -58,6 +58,9 @@ a pancreatic/perioperative case. `case_registry.py` returns private copies of
 each case's record, role contexts, evidence and runtime policy. Selection never
 changes shared module globals. Tools, prompts, friction, proposals and memory
 cards remain bound to that case; unrelated saved patient memories are excluded.
+Every case supplies the same runtime policy, so the chair and the specialist
+runtime hold no per-case branches: adding a case is a content change in
+`case_registry.py` and its dossier, not an engine change.
 
 Live model payloads retain all distinct clinical source values while referencing
 duplicate table/projection content only once. Shared evidence limitations are
