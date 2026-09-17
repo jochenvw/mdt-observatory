@@ -33,6 +33,8 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
+          npx tsc -b
+          npm test -- --run
           npm run build
       - name: Install browser
         run: uv run --frozen playwright install --with-deps chromium
@@ -45,14 +47,14 @@ jobs:
       - name: Compile infrastructure
         shell: pwsh
         run: |
-          $inputFile = (Resolve-Path 'infra\main.bicep').Path
+          $inputFile = (Resolve-Path 'infra/main.bicep').Path
           $outputFile = Join-Path $env:RUNNER_TEMP 'mdt-infra.json'
           az bicep build --file $inputFile --outfile $outputFile
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Check PowerShell syntax
         shell: pwsh
         run: |
-          foreach ($file in @('scripts\deploy.ps1', 'scripts\verify-azure.ps1')) {
+          foreach ($file in @('scripts/deploy.ps1', 'scripts/verify-azure.ps1')) {
             $tokens = $null
             $errors = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile(
@@ -63,16 +65,16 @@ jobs:
         run: docker build --tag mdt-observatory:ci .
       - name: Test deployment polling bounds
         shell: pwsh
-        run: .\infra\tests\script-loops.ps1
+        run: ./infra/tests/script-loops.ps1
       - name: Test CLI preflight arguments
         shell: pwsh
-        run: .\infra\tests\cli-preflight.ps1
+        run: ./infra/tests/cli-preflight.ps1
       - name: Test exclusive-writer release safety
         shell: pwsh
-        run: .\infra\tests\release-safety.ps1
+        run: ./infra/tests/release-safety.ps1
       - name: Test private Blob infrastructure guards
         shell: pwsh
-        run: .\infra\tests\private-storage.ps1
+        run: ./infra/tests/private-storage.ps1
       - name: Test migration and deployment flow
         shell: pwsh
-        run: .\infra\tests\deployment-flow.ps1
+        run: ./infra/tests/deployment-flow.ps1

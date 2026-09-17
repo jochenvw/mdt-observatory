@@ -4,7 +4,7 @@ param([string] $CompiledTemplatePath)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-$scriptPath = Join-Path $root 'scripts\deploy.ps1'
+$scriptPath = Join-Path $root 'scripts/deploy.ps1'
 $originalToken = $env:MDT_PRESENTER_TOKEN
 $global:Mock = @{}
 

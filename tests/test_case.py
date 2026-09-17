@@ -1,6 +1,5 @@
 """Source fidelity, packaged dossier completeness and CRC-only case boundaries."""
 
-import hashlib
 import json
 import re
 from importlib.resources import files
@@ -8,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from conftest import source_digest
 
 from mdt import agents
 from mdt.models import Role
@@ -42,7 +42,7 @@ def test_complete_yaml_is_preserved_with_only_documented_normalization() -> None
     expected["case"]["demo"] = expected["case"].pop("case")
     assert CASE["dossier"] == expected
     assert len(expected) == 22
-    assert CASE["source_metadata"]["sha256"] == hashlib.sha256(SOURCE.read_bytes()).hexdigest()
+    assert CASE["source_metadata"]["sha256"] == source_digest(SOURCE)
     packaged = json.loads(files("mdt").joinpath("dossiers", "crc_case.json").read_text("utf-8"))
     assert packaged["dossier"] == expected
 

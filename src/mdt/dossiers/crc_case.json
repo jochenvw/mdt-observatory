@@ -807,7 +807,7 @@
       "Source demonstration flag renamed to demo",
       "Narrative citation tokens replaced by explicit unverified-reference labels",
       "All YAML values, nested fields, ordering and date ambiguities otherwise preserved",
-      "Authorized source redaction removes academic biographies and neutralizes contributor framing; SHA256 binds the sanitized source, not the original unredacted document"
+      "Authorized source redaction removes academic biographies and neutralizes contributor framing; SHA256 binds the sanitized source, not the original unredacted document, and is digested over its text with newlines normalized so the record is independent of checkout line endings"
     ],
     "academic_profile_boundary": "Academic biographies and contributor framing removed from the source by authorization. No agent impersonates a clinician; human review remains required.",
     "date_ambiguity": "tumor_markers.after_cycle_4.date is 2026-09-01; response_assessment.biomarkers.date is 2026-09-09. Both source dates retained.",

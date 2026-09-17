@@ -46,7 +46,7 @@ function Invoke-Azure([string[]] $Arguments) {
     return '[]'
 }
 
-$drain = Get-PollLoop 'scripts\deploy.ps1'
+$drain = Get-PollLoop 'scripts/deploy.ps1'
 $revisions = @([pscustomobject]@{ name = 'old-active' }, [pscustomobject]@{ name = 'old-inactive' })
 $appName = 'test-app'
 $TargetAppName = $appName
@@ -87,7 +87,7 @@ public sealed class MdtPollingTestHandler : HttpMessageHandler {
 }
 '@
 
-$health = Get-PollLoop 'scripts\verify-azure.ps1'
+$health = Get-PollLoop 'scripts/verify-azure.ps1'
 $baseUrl = 'https://test.invalid'
 foreach ($case in @('ready', 'transient', 'timeout')) {
     $script:sleeps = 0

@@ -1,12 +1,12 @@
 """Independent source fidelity and safety boundaries for the two additional dossiers."""
 
-import hashlib
 import json
 import re
 from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import source_digest
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "case_2.md"
@@ -63,6 +63,17 @@ def _tables(text: str) -> list[dict[str, Any]]:
     return tables
 
 
+@pytest.mark.parametrize("source", [ROOT / "case.md", ROOT / "case_2.md"])
+def test_source_provenance_survives_a_windows_style_checkout(source: Path, tmp_path: Path) -> None:
+    """The recorded digest must identify the source, not a platform's line endings."""
+    text = source.read_text(encoding="utf-8")
+    assert "\r" not in text, "Sources are read with universal newlines."
+    windows_checkout = tmp_path / source.name
+    windows_checkout.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+    assert windows_checkout.read_bytes() != source.read_bytes().replace(b"\r\n", b"\n")
+    assert source_digest(windows_checkout) == source_digest(source)
+
+
 @pytest.mark.parametrize("name", PACKS)
 def test_full_new_pack_contract_and_source_hash(name: str) -> None:
     pack = _pack(name)
@@ -78,7 +89,7 @@ def test_full_new_pack_contract_and_source_hash(name: str) -> None:
     assert "NOT FOR CLINICAL USE" in case["disclaimer"]
     metadata = case["source_metadata"]
     assert metadata["file"] == SOURCE.name
-    assert metadata["sha256"] == hashlib.sha256(SOURCE.read_bytes()).hexdigest()
+    assert metadata["sha256"] == source_digest(SOURCE)
     assert all(metadata[key] for key in (
         "simulation_date", "normalization", "exclusions", "provenance", "caveats"
     ))

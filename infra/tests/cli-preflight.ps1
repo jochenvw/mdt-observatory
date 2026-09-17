@@ -10,7 +10,7 @@ $SubscriptionId = 'e3825c9a-4bce-43e1-899e-1610156c9383'
 $tokens = $null
 $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile(
-    (Join-Path $root 'scripts\deploy.ps1'), [ref]$tokens, [ref]$errors)
+    (Join-Path $root 'scripts/deploy.ps1'), [ref]$tokens, [ref]$errors)
 if ($errors.Count) { throw ($errors | Out-String) }
 $helper = $ast.Find({
     param($node)

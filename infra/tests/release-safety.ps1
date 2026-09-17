@@ -6,14 +6,14 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-. (Join-Path $root 'infra\scripts\private-storage.ps1')
+. (Join-Path $root 'infra/scripts/private-storage.ps1')
 $SubscriptionId = 'e3825c9a-4bce-43e1-899e-1610156c9383'
 $resourceGroup = 'rg-mdt-observatory-demo'
 $appName = 'mdt-observatory-vnet'
 $tokens = $null
 $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile(
-    (Join-Path $root 'scripts\deploy.ps1'), [ref]$tokens, [ref]$errors)
+    (Join-Path $root 'scripts/deploy.ps1'), [ref]$tokens, [ref]$errors)
 if ($errors.Count) { throw ($errors | Out-String) }
 foreach ($name in @('Invoke-Azure', 'Assert-StorageReady', 'Set-ManualRevisionMode', 'Complete-Release')) {
     $helper = $ast.Find({

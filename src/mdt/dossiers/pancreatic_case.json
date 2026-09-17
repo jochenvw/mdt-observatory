@@ -664,7 +664,7 @@
     "disclaimer": "FICTIONAL MDT DEMONSTRATION — NOT FOR CLINICAL USE",
     "source_metadata": {
       "file": "case_2.md",
-      "sha256": "b175096488bab99fcb909f64651ca1d3105b9b1888575efb7a3860c77b849c7f",
+      "sha256": "c193f5179897c1fdaf7764a140a9fecf94ee0e1517c4941a6c9fa2ae734345d1",
       "simulation_date": "2026-06-10",
       "data_status": "Entirely fictional case record; not clinical data",
       "normalization": [
@@ -672,7 +672,7 @@
         "Opaque citation tokens replaced with [Source-supplied reference; not independently verified]",
         "Display identifiers distinguish the two cases; source fictional patient names remain in source tables",
         "All relevant Markdown sections and table cells retained; structured projections supplement the narrative",
-        "Authorized academic-profile redaction and neutral connective wording; SHA256 binds the sanitized source",
+        "Authorized academic-profile redaction and neutral connective wording; SHA256 binds the sanitized source, digested over its text with newlines normalized so the record is independent of checkout line endings",
         "Simulation date is the source second HPB/perioperative MDT decision-point date, not a newly invented treatment or outcome date"
       ],
       "exclusions": [

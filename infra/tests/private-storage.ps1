@@ -2,7 +2,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-. (Join-Path $root 'infra\scripts\private-storage.ps1')
+. (Join-Path $root 'infra/scripts/private-storage.ps1')
 $subscription = 'e3825c9a-4bce-43e1-899e-1610156c9383'
 $group = 'rg-mdt-observatory-demo'
 $scope = "/subscriptions/$subscription/resourceGroups/$group/providers"
