@@ -6,6 +6,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $scriptPath = Join-Path $root 'scripts/deploy.ps1'
 $originalToken = $env:MDT_PRESENTER_TOKEN
+$originalExitCode = if (Test-Path variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
 $global:Mock = @{}
 
 function Reset-Mock {
@@ -302,4 +303,6 @@ try {
 } finally {
     $env:MDT_PRESENTER_TOKEN = $originalToken
     Remove-Item Function:\az
+    # The Azure CLI mock simulates failures by setting $LASTEXITCODE; do not leak that to the caller.
+    $global:LASTEXITCODE = $originalExitCode
 }
