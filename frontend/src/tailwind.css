@@ -1,0 +1,155 @@
+@import "tailwindcss";
+@source "./**/*.{ts,tsx}";
+
+:root {
+  color-scheme: light;
+  --cp-bg: #f7f4ef;
+  --cp-bg-elevated: #fcfbf8;
+  --cp-surface: #ffffff;
+  --cp-surface-soft: #f5f5f5;
+  --cp-border: #dedede;
+  --cp-border-strong: #919191;
+  --cp-text: #242424;
+  --cp-text-muted: #5c5c5c;
+  --cp-text-soft: #6f6f6f;
+  --cp-accent: #b11f4b;
+  --cp-accent-hover: #9a1a41;
+  --cp-accent-soft: rgba(177, 31, 75, 0.08);
+  --cp-accent-fg: #ffffff;
+  --cp-success: #16a34a;
+  --cp-danger: #dc2626;
+  --cp-warning: #f59e0b;
+  --cp-link: #0078d4;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+  --cp-overlay: rgba(255, 255, 255, 0.8);
+  --cp-panel: rgba(255, 255, 255, 0.86);
+  --cp-panel-strong: rgba(255, 255, 255, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.55);
+  --cp-highlight: rgba(177, 31, 75, 0.12);
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --cp-bg: #3d3b3a;
+  --cp-bg-elevated: #343231;
+  --cp-surface: #292929;
+  --cp-surface-soft: #2e2e2e;
+  --cp-border: #474747;
+  --cp-border-strong: #5f5f5f;
+  --cp-text: #dedede;
+  --cp-text-muted: #919191;
+  --cp-text-soft: #b0b0b0;
+  --cp-accent: #fd8ea1;
+  --cp-accent-hover: #fb7b91;
+  --cp-accent-soft: rgba(253, 142, 161, 0.14);
+  --cp-accent-fg: #1a1a1a;
+  --cp-success: #4ade80;
+  --cp-danger: #f87171;
+  --cp-warning: #fbbf24;
+  --cp-link: #4da6ff;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+  --cp-overlay: rgba(41, 41, 41, 0.88);
+  --cp-panel: rgba(41, 41, 41, 0.72);
+  --cp-panel-strong: rgba(41, 41, 41, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.04);
+  --cp-highlight: rgba(253, 142, 161, 0.12);
+}
+@theme inline {
+  --font-sans: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: Consolas, "Courier New", Courier, monospace;
+  --color-cp-bg: var(--cp-bg);
+  --color-cp-bg-elevated: var(--cp-bg-elevated);
+  --color-cp-surface: var(--cp-surface);
+  --color-cp-surface-soft: var(--cp-surface-soft);
+  --color-cp-border: var(--cp-border);
+  --color-cp-border-strong: var(--cp-border-strong);
+  --color-cp-text: var(--cp-text);
+  --color-cp-text-muted: var(--cp-text-muted);
+  --color-cp-text-soft: var(--cp-text-soft);
+  --color-cp-accent: var(--cp-accent);
+  --color-cp-accent-hover: var(--cp-accent-hover);
+  --color-cp-accent-soft: var(--cp-accent-soft);
+  --color-cp-accent-fg: var(--cp-accent-fg);
+  --color-cp-highlight: var(--cp-highlight);
+  --color-cp-success: var(--cp-success);
+  --color-cp-danger: var(--cp-danger);
+  --color-cp-warning: var(--cp-warning);
+  --color-cp-link: var(--cp-link);
+  --color-cp-overlay: var(--cp-overlay);
+}
+@layer base {
+  body { @apply m-0 bg-cp-bg font-sans text-sm leading-relaxed text-cp-text; }
+  button, input, select, textarea { font: inherit; }
+  button, a, input, select, textarea, summary {
+    outline-offset: 4px;
+    -webkit-tap-highlight-color: var(--cp-highlight);
+  }
+  :focus-visible { outline: 2px solid var(--cp-accent); }
+  main:focus { outline: none; }
+  button { @apply cursor-pointer rounded-lg border border-cp-border bg-cp-surface text-cp-text; }
+  button:disabled { @apply cursor-not-allowed opacity-50; }
+  a { @apply text-cp-link underline-offset-4 hover:underline; }
+  h1 { @apply text-3xl font-semibold leading-tight tracking-tight; }
+  h2 { @apply text-xl font-semibold leading-snug tracking-tight; }
+  h3 { @apply text-base font-semibold leading-snug; }
+  h4 { @apply mb-2 mt-5 text-xs font-semibold; }
+  small { @apply text-xs; }
+  svg { @apply shrink-0; }
+  select, input, textarea { @apply max-w-full rounded-xl border border-cp-border bg-cp-surface px-3 py-2.5 text-cp-text; }
+  input, textarea { @apply w-full; }
+  textarea { @apply block min-h-24 resize-y leading-7; }
+  textarea::placeholder, input::placeholder { color: var(--cp-text-soft); }
+  label { @apply mb-2 block text-xs font-medium; }
+  details > summary { @apply flex cursor-pointer list-none items-center gap-2 text-xs text-cp-text-muted; }
+  details[open] > summary { @apply mb-4; }
+  summary::-webkit-details-marker { display: none; }
+  blockquote { @apply my-4 border-l-2 border-cp-accent bg-cp-bg-elevated px-5 py-4 text-sm leading-8; }
+  table { @apply w-full border-collapse text-left text-xs; }
+  th { @apply whitespace-nowrap border-b border-cp-border px-3 py-3 text-[10px] font-medium uppercase tracking-wide text-cp-text-soft; }
+  td { @apply border-b border-cp-border px-3 py-4 leading-7; }
+  td:first-child { @apply min-w-48; }
+  td small { @apply mt-1 block text-[10px] text-cp-text-soft; }
+}
+
+/* The anatomical illustration is schematic, not measured image geometry. */
+.scan-grid { fill: none; stroke: var(--cp-border); stroke-width: .35; }
+.body-outer { fill: var(--cp-border); stroke: var(--cp-border-strong); stroke-width: 1; }
+.body-inner { fill: var(--cp-bg-elevated); stroke: var(--cp-text-soft); stroke-width: .5; }
+.lung { fill: var(--cp-surface); stroke: var(--cp-border-strong); stroke-width: 1; }
+.organ { fill: var(--cp-border); stroke: var(--cp-border-strong); stroke-width: .7; }
+.bone { fill: var(--cp-bg); stroke: var(--cp-text-soft); stroke-width: 1; }
+.vessel { fill: none; stroke: var(--cp-border-strong); stroke-width: 2; stroke-linecap: round; }
+.rib { fill: none; stroke-width: 5; stroke-linecap: round; }
+.lesion { fill: var(--cp-link); opacity: .55; }
+.annotation { fill: none; stroke: var(--cp-link); stroke-width: 1; }
+.annotation > text { fill: var(--cp-link); stroke: none; font-family: Consolas, monospace; font-size: 8px; }
+.annotation > circle { fill: var(--cp-link); }
+.orientation { fill: var(--cp-text-soft); font-family: Consolas, monospace; font-size: 9px; }
+
+/* Fixed diagram geometry for the overview's seven-specialty illustration. */
+.orbit { width: 370px; height: 370px; position: relative; justify-self: center; }
+.orbit-ring { position: absolute; border: 1px solid var(--cp-border); border-radius: 50%; }
+.orbit-ring.outer { inset: 26px; border-style: dashed; }
+.orbit-ring.inner { inset: 82px; background: var(--cp-accent-soft); border-color: var(--cp-highlight); }
+.orbit-center { position: absolute; top: 125px; left: 125px; height: 120px; width: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--cp-surface); border: 1px solid var(--cp-highlight); border-radius: 50%; color: var(--cp-accent); }
+.orbit-center strong { margin-top: 5px; font-size: 10px; text-align: center; letter-spacing: .9px; }
+.orbit-center small { margin-top: 3px; font-size: 8px; color: var(--cp-text-muted); }
+.orbit-node { position: absolute; display: flex; align-items: center; flex-direction: column; justify-content: center; width: 100px; height: 72px; background: var(--cp-bg); border: 1px solid var(--cp-border); border-radius: 12px; gap: 7px; }
+.orbit-node svg { color: var(--cp-accent); }
+.orbit-node span { font-size: 9px; color: var(--cp-text-muted); font-weight: 600; }
+.orbit-0 { top: 0; left: 135px; }
+.orbit-1 { top: 61px; right: 0; }
+.orbit-2 { top: 196px; right: 0; }
+.orbit-3 { bottom: 0; right: 70px; }
+.orbit-4 { bottom: 0; left: 70px; }
+.orbit-5 { top: 196px; left: 0; }
+.orbit-6 { top: 61px; left: 0; }
+@media (width < 1280px) { .orbit { display: none; } }
+.clinical-update { animation: clinical-arrival 900ms ease-out; }
+.activity-stream { overflow-anchor: none; }
+@keyframes clinical-arrival {
+  from { opacity: .35; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

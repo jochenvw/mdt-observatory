@@ -1,0 +1,86 @@
+import sqlite3
+from pathlib import Path
+from typing import Protocol
+
+from mdt.models import Meeting, Memory
+
+
+class Persistence(Protocol):
+    def save(self, meeting: Meeting) -> None: ...
+    def get(self, meeting_id: str) -> Meeting | None: ...
+    def latest(self) -> Meeting | None: ...
+    def count(self) -> int: ...
+    def memories(
+        self, seeds: list[Memory], clinician_id: str = "demo-clinician"
+    ) -> list[Memory]: ...
+    def save_memory(self, memory: Memory) -> None: ...
+    def close(self) -> None: ...
+
+
+class Store:
+    """One writer, atomic snapshots; DELETE journal supports the Azure Files mount."""
+
+    def __init__(self, path: str) -> None:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        self.connection = sqlite3.connect(path, check_same_thread=False, timeout=30)
+        self.connection.execute("PRAGMA journal_mode=DELETE")
+        self.connection.execute("PRAGMA synchronous=FULL")
+        self.connection.execute(
+            "CREATE TABLE IF NOT EXISTS meetings "
+            "(id TEXT PRIMARY KEY, created_at TEXT NOT NULL, snapshot TEXT NOT NULL)"
+        )
+        self.connection.execute(
+            "CREATE TABLE IF NOT EXISTS memories "
+            "(id TEXT NOT NULL, clinician_id TEXT NOT NULL, snapshot TEXT NOT NULL, "
+            "PRIMARY KEY(id, clinician_id))"
+        )
+        self.connection.commit()
+
+    def memories(self, seeds: list[Memory], clinician_id: str = "demo-clinician") -> list[Memory]:
+        with self.connection:
+            for memory in seeds:
+                self.connection.execute(
+                    "INSERT OR IGNORE INTO memories VALUES (?, ?, ?)",
+                    (memory.id, memory.clinician_id, memory.model_dump_json()),
+                )
+        rows = self.connection.execute(
+            "SELECT snapshot FROM memories WHERE clinician_id=? ORDER BY id", (clinician_id,)
+        ).fetchall()
+        memories = [Memory.model_validate_json(row[0]) for row in rows]
+        for memory in memories:
+            if memory.status != "FORGOTTEN":
+                memory.status = "AVAILABLE"
+        return memories
+
+    def save_memory(self, memory: Memory) -> None:
+        with self.connection:
+            self.connection.execute(
+                "UPDATE memories SET snapshot=? WHERE id=? AND clinician_id=?",
+                (memory.model_dump_json(), memory.id, memory.clinician_id),
+            )
+
+    def save(self, meeting: Meeting) -> None:
+        with self.connection:
+            self.connection.execute(
+                "INSERT INTO meetings VALUES (?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET snapshot=excluded.snapshot",
+                (meeting.id, meeting.created_at, meeting.model_dump_json()),
+            )
+
+    def get(self, meeting_id: str) -> Meeting | None:
+        row = self.connection.execute(
+            "SELECT snapshot FROM meetings WHERE id=?", (meeting_id,)
+        ).fetchone()
+        return Meeting.model_validate_json(row[0]) if row else None
+
+    def latest(self) -> Meeting | None:
+        row = self.connection.execute(
+            "SELECT snapshot FROM meetings ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+        return Meeting.model_validate_json(row[0]) if row else None
+
+    def count(self) -> int:
+        return int(self.connection.execute("SELECT COUNT(*) FROM meetings").fetchone()[0])
+
+    def close(self) -> None:
+        self.connection.close()

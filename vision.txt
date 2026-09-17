@@ -1,0 +1,1494 @@
+# Build: Agentic-First Multidisciplinary Oncology Team
+
+You are a senior product engineer, AI architect, and UX engineer.
+
+Build a working, visually compelling prototype of an **agentic-first oncology multidisciplinary team meeting (MDT)**.
+
+This is NOT primarily a chatbot demo.
+
+It should feel like we have reimagined the multidisciplinary meeting around agents:
+
+- a central MDT meeting is underway;
+- each clinical role has its own specialist agent and role-specific workspace;
+- the chair/orchestrator moves the meeting through a structured process;
+- when a case starts, all participating workspaces react;
+- specialist agents autonomously inspect the relevant patient information;
+- they use tools, evidence and role-specific knowledge;
+- humans can observe and steer their specialist agent;
+- specialist agents publish structured positions into the shared MDT;
+- the system identifies agreement, disagreement, uncertainty and missing information;
+- the chair focuses subsequent discussion only on unresolved friction;
+- when sufficient convergence is reached, a proposed multidisciplinary treatment plan emerges;
+- participants review/sign off or object;
+- the final decision and provenance are captured.
+
+The prototype should make this process VISUALLY OBVIOUS.
+
+A viewer should understand the basic idea within 30 seconds without needing an explanation.
+
+This is an "art of the possible" prototype, not a production clinical system.
+
+Do not overbuild authentication, infrastructure, FHIR servers, EHR integration, etc.
+Mock components where necessary, but make the agent interaction and orchestration real enough to demonstrate.
+
+----------------------------------------------------------------------
+1. PRODUCT THESIS
+----------------------------------------------------------------------
+
+Traditional MDT:
+
+    patient data
+        ↓
+    people manually inspect information
+        ↓
+    meeting
+        ↓
+    specialists verbally contribute
+        ↓
+    disagreement / questions
+        ↓
+    somebody researches
+        ↓
+    decision
+
+Agentic-first MDT:
+
+                    PATIENT
+                       │
+                       ▼
+                ┌──────────────┐
+                │ MDT CHAIR /  │
+                │ ORCHESTRATOR │
+                └──────┬───────┘
+                       │
+              activate patient case
+                       │
+        ┌──────────────┼───────────────┐
+        ▼              ▼               ▼
+   Radiology       Oncology        Surgery ...
+   workspace       workspace       workspace
+        │              │               │
+     agent           agent           agent
+        │              │               │
+        └──── structured positions ────┘
+                       │
+                       ▼
+               SHARED MDT STATE
+                       │
+              consensus analysis
+                       │
+              ┌────────┴────────┐
+              ▼                 ▼
+          CONSENSUS          FRICTION
+              │                 │
+              │          targeted second
+              │              round
+              │                 │
+              └────────┬────────┘
+                       ▼
+                PROPOSED PLAN
+                       │
+                role sign-off
+                       │
+                       ▼
+                MDT DECISION
+
+
+The central concept is:
+
+    Agents do the work.
+    Humans supervise, steer and intervene where judgment is needed.
+    The MDT is where specialist positions converge.
+
+Do NOT implement this as one giant agent pretending to be multiple people.
+
+Roles must have distinct context, tools, prompts, state and outputs.
+
+----------------------------------------------------------------------
+2. THE DEMO EXPERIENCE
+----------------------------------------------------------------------
+
+Assume there is:
+
+A. One large CENTRAL SCREEN visible to the room.
+B. Individual ROLE WORKSPACES on clinicians' laptops.
+C. A CHAIR / ORCHESTRATOR controlling the meeting.
+
+For the prototype, allow all screens to be demonstrated from one browser.
+
+Provide a "Demo Control" allowing the presenter to switch between:
+
+- Central MDT screen
+- Chair
+- Radiologist
+- Medical oncologist
+- Surgeon
+- Pathologist
+- Researcher / evidence specialist
+- Protocol / guideline specialist
+- Patient perspective / supporting role
+
+Optionally provide a "wall view" showing several workspaces simultaneously.
+
+----------------------------------------------------------------------
+3. CENTRAL MDT SCREEN
+----------------------------------------------------------------------
+
+The central screen is NOT a chat window.
+
+It is the shared state of the meeting.
+
+It should initially show:
+
+PATIENT
+- pseudonym / demo identifier
+- age
+- diagnosis
+- stage
+- important history
+- relevant biomarkers
+- important previous treatment
+- current clinical question
+
+CASE QUESTION
+
+Example:
+
+"What is the recommended next treatment strategy for this patient?"
+
+Then show the participating specialties as visually distinct cards/nodes.
+
+Example:
+
+    RADIOLOGY        ● ANALYZING
+    PATHOLOGY        ● READY
+    ONCOLOGY         ● ANALYZING
+    SURGERY          ● READY
+    RESEARCH         ● SEARCHING
+    PROTOCOL         ● CHECKING
+
+These should update LIVE.
+
+Do not require refreshing the browser.
+
+----------------------------------------------------------------------
+4. CASE ACTIVATION
+----------------------------------------------------------------------
+
+The chair selects:
+
+    NEXT PATIENT
+
+This should trigger an event such as:
+
+    CaseActivated(patient_id)
+
+All specialist workspaces immediately react.
+
+Make this visually impressive.
+
+For example:
+
+Radiologist screen transitions to:
+- imaging
+- lesion history
+- previous scans
+- measurements
+- radiology reports
+
+Oncologist screen transitions to:
+- diagnosis
+- systemic treatment history
+- biomarkers
+- performance status
+- toxicity
+- relevant guidelines
+
+Surgeon:
+- anatomical findings
+- imaging
+- operability
+- previous surgery
+- relevant contraindications
+
+Pathologist:
+- pathology reports
+- molecular findings
+- specimen history
+- biomarkers
+
+Researcher:
+- clinical question
+- relevant disease/subtype
+- current evidence search
+- studies
+- trials
+
+Protocol specialist:
+- national guideline
+- European guideline
+- applicable treatment protocol
+- regulatory status
+
+The same patient is therefore represented differently depending on ROLE.
+
+This is critical.
+
+DO NOT build one generic patient page for everybody.
+
+----------------------------------------------------------------------
+5. ROLE-SPECIFIC AGENTIC UI
+----------------------------------------------------------------------
+
+Every specialist workspace has:
+
+1. ROLE-SPECIFIC PATIENT VIEW
+2. SPECIALIST AGENT
+3. VISIBLE REASONING TRACE
+4. EVIDENCE
+5. HUMAN STEERING
+6. DRAFT POSITION
+7. PUBLISH/UPDATE STATUS
+
+Do NOT expose raw model chain-of-thought.
+
+Instead expose a structured, inspectable reasoning trace:
+
+CURRENT ASSESSMENT
+    "Lesion demonstrates significant interval growth."
+
+OBSERVATIONS
+    - lesion now 23 mm
+    - previous scan: 17 mm
+    - interval: 11 weeks
+    - morphology changed
+    - no obvious metastatic disease
+
+WORKING HYPOTHESIS
+    "Growth kinetics increase concern despite borderline morphology."
+
+UNCERTAINTIES
+    - measurement variation?
+    - inflammatory explanation?
+    - previous scan quality lower
+
+EVIDENCE BEING CHECKED
+    [study]
+    [guideline]
+    [previous image]
+    [patient history]
+
+NEXT ACTION
+    "Compare volumetric growth and review previous imaging."
+
+The trace should visibly change as the agent works.
+
+----------------------------------------------------------------------
+6. HUMAN ↔ AGENT COLLABORATION
+----------------------------------------------------------------------
+
+The clinician should be able to steer their agent.
+
+Examples:
+
+    "Focus on rate of growth."
+
+    "Compare this against the scan from six months ago."
+
+    "Check whether previous toxicity changes your recommendation."
+
+    "I don't agree. Look again at the inferior margin."
+
+    "Find evidence specifically for patients over 70."
+
+    "Check Dutch rather than US guidance."
+
+The UI should then visibly show:
+
+    HUMAN GUIDANCE RECEIVED
+              ↓
+    AGENT REASSESSING
+              ↓
+    UPDATED ASSESSMENT
+
+The important idea:
+
+The human is not merely accepting/rejecting an AI answer.
+
+They are collaborating with an agent during specialist reasoning.
+
+----------------------------------------------------------------------
+7. AUTONOMY MODEL
+----------------------------------------------------------------------
+
+Do NOT require a human click for every agent action.
+
+The system is deliberately agentic-first.
+
+Every conclusion/subtask should have an autonomy state:
+
+    AUTO
+    REVIEW
+    ESCALATE
+
+AUTO:
+Agent considers evidence sufficiently clear and can publish its position automatically.
+
+REVIEW:
+Agent can formulate a position but wants specialist review.
+
+ESCALATE:
+Agent believes expert judgment is required.
+
+Example:
+
+    RADIOLOGY
+
+    Finding:
+    "Clear progression compared with previous imaging."
+
+    Confidence: HIGH
+    Mode: AUTO
+
+versus:
+
+    Finding:
+    "Borderline progression; measurement and morphology conflict."
+
+    Confidence: MODERATE
+    Mode: ESCALATE
+
+    Why:
+    - growth rate significant
+    - morphology ambiguous
+    - decision changes treatment path
+
+The prototype is NOT making real medical decisions.
+
+This autonomy classification is demonstration behavior.
+
+----------------------------------------------------------------------
+8. SPECIALIST POSITION OBJECT
+----------------------------------------------------------------------
+
+Each specialist eventually produces a structured Position.
+
+Use something conceptually similar to:
+
+{
+  "role": "radiology",
+  "case_id": "...",
+  "position": "Imaging is consistent with progression.",
+  "confidence": 0.86,
+
+  "claims": [
+    {
+      "claim": "Target lesion has increased significantly.",
+      "evidence": [...]
+    }
+  ],
+
+  "uncertainties": [
+    "Measurement variability remains possible."
+  ],
+
+  "recommendation": "...",
+
+  "questions_for_mdt": [
+    "Does previous treatment toxicity change the acceptable threshold?"
+  ],
+
+  "human_intervention": false,
+
+  "provenance": [...]
+}
+
+Do not obsess over this exact schema.
+Improve it where useful.
+
+The important thing is that agents exchange STRUCTURED SEMANTIC OBJECTS,
+not just natural-language chat messages.
+
+----------------------------------------------------------------------
+9. CENTRAL EVENT / MESSAGE MODEL
+----------------------------------------------------------------------
+
+Implement an event-driven architecture.
+
+Conceptually:
+
+CaseActivated
+CaseContextUpdated
+
+RoleAnalysisStarted
+ObservationAdded
+EvidenceFound
+UncertaintyRaised
+
+PositionDrafted
+PositionPublished
+PositionUpdated
+
+ChallengeRaised
+QuestionRaised
+
+FrictionDetected
+EvidenceRequested
+
+ConsensusProposed
+ObjectionRaised
+ConcurrenceGiven
+
+PlanProposed
+PlanUpdated
+CaseClosed
+
+Use WebSockets, SSE or another simple real-time mechanism.
+
+The UI should visibly react to these events.
+
+Do NOT build distributed infrastructure merely for architectural purity.
+A lightweight event bus inside the application is sufficient for the prototype.
+
+----------------------------------------------------------------------
+10. THE CHAIR / ORCHESTRATOR
+----------------------------------------------------------------------
+
+Create an MDT Chair Agent.
+
+The Chair is NOT another medical specialist.
+
+Its job is process orchestration.
+
+Responsibilities:
+
+- activate patient
+- establish clinical question
+- determine relevant roles
+- delegate analysis
+- monitor role progress
+- collect positions
+- detect disagreement
+- detect missing evidence
+- identify uncertainty
+- identify unanswered questions
+- focus discussion
+- request targeted follow-up
+- determine whether another round is needed
+- synthesize proposed plan
+- request concurrence / objections
+- capture final MDT outcome
+
+The chair should NEVER simply decide:
+
+"Treatment X is correct."
+
+Instead:
+
+"Current specialist positions indicate convergence around X.
+One unresolved concern remains regarding Y."
+
+----------------------------------------------------------------------
+11. ROUND-BASED MDT ORCHESTRATION
+----------------------------------------------------------------------
+
+Model the meeting approximately as a state machine:
+
+CASE_LOADING
+    ↓
+INITIAL_ANALYSIS
+    ↓
+POSITION_COLLECTION
+    ↓
+FRICTION_ANALYSIS
+    ↓
+    ├── no blocking friction ──→ PLAN_PROPOSAL
+    │
+    └── blocking friction
+              ↓
+       TARGETED_DISCUSSION
+              ↓
+       POSITION_UPDATE
+              ↓
+       FRICTION_ANALYSIS
+              ↓
+             ...
+
+Eventually:
+
+PLAN_PROPOSAL
+    ↓
+CONCURRENCE
+    ↓
+    ├── objections → TARGETED_DISCUSSION
+    │
+    └── concurrence → DECISION_CAPTURED
+
+Make the state machine visible on the central screen.
+
+----------------------------------------------------------------------
+12. FRICTION ENGINE
+----------------------------------------------------------------------
+
+This is one of the most important features.
+
+The system should actively identify where specialists disagree.
+
+Example:
+
+RADIOLOGY:
+    "Imaging suggests progression."
+
+ONCOLOGY:
+    "Evidence for changing systemic therapy is insufficient."
+
+SURGERY:
+    "Potentially resectable."
+
+RESEARCH:
+    "Relevant evidence exists but population differs from patient."
+
+Instead of displaying four paragraphs, synthesize:
+
+FRICTION #1
+
+    IS THIS SUFFICIENT EVIDENCE OF PROGRESSION
+    TO CHANGE TREATMENT?
+
+    Radiology       → YES
+    Oncology        → UNCERTAIN
+    Surgery         → CONDITIONAL
+
+    Missing:
+    - pathology confirmation
+    - applicability of study X
+
+Then the Chair launches ROUND 2 only for relevant roles.
+
+This is a major part of the demo.
+
+The system should visibly transform:
+
+    3 open questions
+            ↓
+    2 open questions
+            ↓
+    1 open question
+            ↓
+    CONSENSUS
+
+----------------------------------------------------------------------
+13. RESEARCH AGENT
+----------------------------------------------------------------------
+
+Create a dedicated evidence/research agent.
+
+It should behave like a strong medical evidence researcher rather than generic web search.
+
+PRIORITIZE EUROPE.
+
+Source hierarchy approximately:
+
+1. Netherlands
+2. European Union / European professional societies
+3. International peer-reviewed evidence
+4. United States
+5. Emerging/preprint evidence
+
+Relevant sources include:
+
+Netherlands:
+- Richtlijnendatabase
+- IKNL where applicable
+- Dutch professional society guidance where applicable
+
+Europe:
+- ESMO
+- EMA
+- CTIS
+- European HTA information where relevant
+
+Research:
+- PubMed
+- PubMed Central
+- systematic reviews
+- peer-reviewed journals
+
+Trials:
+- CTIS FIRST
+- ClinicalTrials.gov SECONDARY
+- WHO ICTRP where useful
+
+Emerging:
+- medRxiv
+- bioRxiv where scientifically relevant
+
+US sources:
+- NCCN
+- ASCO
+- FDA
+- ClinicalTrials.gov
+
+US information should be clearly marked as US context rather than silently treated as European standard of care.
+
+----------------------------------------------------------------------
+14. EVIDENCE SCRUTINY
+----------------------------------------------------------------------
+
+The Research Agent should not merely retrieve papers.
+
+For each important item assess:
+
+- source authority
+- study type
+- peer review status
+- study population
+- sample size
+- endpoints
+- absolute effect where available
+- relative effect where available
+- confidence intervals
+- follow-up
+- subgroup relevance
+- post-hoc versus prespecified analysis
+- conflicts of interest/funding where available
+- similarity to THIS patient
+- geographic/regulatory relevance
+- recency
+- conflicting evidence
+
+Represent evidence with badges such as:
+
+    GUIDELINE
+    RCT
+    META-ANALYSIS
+    OBSERVATIONAL
+    CASE SERIES
+    PREPRINT
+
+and:
+
+    HIGH PATIENT MATCH
+    PARTIAL PATIENT MATCH
+    LOW PATIENT MATCH
+
+and:
+
+    NL
+    EU
+    INTERNATIONAL
+    US
+
+----------------------------------------------------------------------
+15. ACCESS / PAYWALL AWARENESS
+----------------------------------------------------------------------
+
+Explicitly model evidence accessibility.
+
+Every source should have something like:
+
+    PUBLIC_FULL_TEXT
+    PUBLIC_ABSTRACT_ONLY
+    LICENSED_INTERNAL
+    NOT_ACCESSIBLE
+
+For the prototype, prioritize publicly accessible sources.
+
+Never pretend that paywalled full text was retrieved.
+
+This should be visible in the UI.
+
+----------------------------------------------------------------------
+16. PROTOCOL / GUIDELINE AGENT
+----------------------------------------------------------------------
+
+Create a separate skill or agent for protocols/guidelines.
+
+Its job is NOT generic research.
+
+Given:
+
+    patient
+    disease
+    stage
+    biomarkers
+    treatment history
+    clinical question
+
+it should determine:
+
+- relevant Dutch guideline
+- relevant European guideline
+- applicable treatment pathway
+- regulatory status
+- relevant trial protocol if discussion references a study
+- whether important evidence was prespecified
+- amendments where relevant
+- deviations or ambiguities
+
+For clinical trials:
+
+    CTIS → preferred
+    ClinicalTrials.gov → fallback
+    publications/supplements → additional
+
+Return:
+
+    PROTOCOL_FOUND
+
+or explicitly:
+
+    PROTOCOL_NOT_PUBLIC
+
+Never silently fabricate missing protocol information.
+
+----------------------------------------------------------------------
+17. CLAIM → SOURCE PROVENANCE
+----------------------------------------------------------------------
+
+Every important externally-derived claim must be inspectable.
+
+The user should be able to click:
+
+    "Study demonstrates improved PFS..."
+
+and see:
+
+    SOURCE
+    TITLE
+    DATE
+    AUTHORITY
+    REGION
+    EXACT SUPPORTING PASSAGE / DATA
+    ACCESS STATUS
+
+The demo should communicate:
+
+    Claim → Evidence → Source
+
+not:
+
+    AI says...
+
+----------------------------------------------------------------------
+18. MEMORY
+----------------------------------------------------------------------
+
+Introduce role-scoped and clinician-scoped memory.
+
+But distinguish memory categories.
+
+Example:
+
+FACTUAL / PATIENT MEMORY
+    "Previous treatment caused grade 3 toxicity."
+
+INSTITUTIONAL PRACTICE
+    "This center normally requests X before Y."
+
+CLINICIAN PREFERENCE
+    "Clinician frequently requests growth-rate analysis in borderline lesions."
+
+EXPERIENTIAL NUDGE
+    "Clinician previously raised concern about X in similar cases."
+
+Never silently transform anecdotal experience into medical fact.
+
+Render memory explicitly:
+
+    MEMORY NUDGE
+
+    "You previously considered rapid growth particularly important
+     in borderline lesions."
+
+    Source:
+    MDT case #...
+    clinician note
+    date
+
+    [Use]
+    [Ignore]
+    [Inspect]
+    [Forget]
+
+Memory should behave as a NUDGE, not hidden policy.
+
+----------------------------------------------------------------------
+19. PATIENT CONTEXT > STEREOTYPES
+----------------------------------------------------------------------
+
+Do not infer behavior from nationality, ethnicity, location, etc.
+
+Instead use actual patient context where available.
+
+For example:
+
+    Patient dietary history indicates ...
+    Patient stated preference indicates ...
+    Patient lives alone ...
+    Patient reports ...
+    Patient previously experienced ...
+
+The point is personalization based on actual information,
+not demographic stereotyping.
+
+----------------------------------------------------------------------
+20. ROLE PERSONAS
+----------------------------------------------------------------------
+
+For demonstration purposes, roles MAY be inspired by real clinicians participating in the session.
+
+If this is done:
+
+- research only public professional information;
+- publications;
+- research interests;
+- conference talks;
+- publicly stated clinical/research positions.
+
+DO NOT pretend the agent literally represents the person.
+
+Label it:
+
+    "Research profile inspired by publicly available work of ..."
+
+The agent may use:
+
+- areas of expertise
+- papers
+- publicly stated research interests
+- known methodological interests
+
+It must NOT fabricate personal opinions.
+
+This could make for a powerful demo:
+
+A clinician sees an agent initialized from their published work,
+then corrects/steers it live.
+
+The correction can itself demonstrate clinician-specific memory.
+
+----------------------------------------------------------------------
+21. AGENTIC UI BEHAVIOR
+----------------------------------------------------------------------
+
+The UI should MOVE.
+
+Avoid static dashboards.
+
+When the Chair activates a patient:
+
+    screens transition
+    relevant panels appear
+    irrelevant panels disappear
+
+When an agent searches:
+
+    SEARCHING ESMO...
+    CHECKING DUTCH GUIDELINE...
+    7 studies found
+    3 discarded
+    2 highly relevant
+
+When evidence changes the assessment:
+
+    hypothesis visibly updates
+
+When a clinician intervenes:
+
+    HUMAN GUIDANCE
+          ↓
+    REASSESSING
+          ↓
+    POSITION UPDATED
+
+When a position is published:
+
+    CENTRAL MDT receives it immediately.
+
+When friction is detected:
+
+    central screen reorganizes around the friction.
+
+When a friction point is resolved:
+
+    it visibly collapses.
+
+The software should feel ALIVE.
+
+----------------------------------------------------------------------
+22. CENTRAL SCREEN VISUAL MODEL
+----------------------------------------------------------------------
+
+Suggested layout:
+
+┌────────────────────────────────────────────────────────────────────┐
+│ PATIENT                     MDT STATE: FRICTION RESOLUTION          │
+│ Case #42                                                            │
+│ Stage ...                     ███████████████░░  4/5 positions      │
+├────────────────────────────────────────────────────────────────────┤
+│                                                                    │
+│   RADIOLOGY        ONCOLOGY          SURGERY          PATHOLOGY     │
+│   ✓ POSITION       ✓ POSITION        ● REVIEW         ✓ POSITION    │
+│                                                                    │
+│                    RESEARCH          PROTOCOL                        │
+│                    ● SEARCHING       ✓ FOUND                         │
+│                                                                    │
+├────────────────────────────────────────────────────────────────────┤
+│ OPEN FRICTION                                                       │
+│                                                                    │
+│  #1 Does progression justify treatment change?                     │
+│                                                                    │
+│     Radiology       YES                                             │
+│     Oncology        UNCERTAIN                                       │
+│     Surgery         CONDITIONAL                                     │
+│                                                                    │
+│     Missing evidence: applicability of Study X                      │
+│                                                                    │
+│                     [RESOLVE →]                                     │
+├────────────────────────────────────────────────────────────────────┤
+│ MEETING TIMELINE                                                    │
+│                                                                    │
+│ Case loaded → Positions → Friction → Round 2 → ...                 │
+└────────────────────────────────────────────────────────────────────┘
+
+Improve the visual design substantially beyond this ASCII sketch.
+
+----------------------------------------------------------------------
+23. ROLE WORKSPACE VISUAL MODEL
+----------------------------------------------------------------------
+
+Example radiology workspace:
+
+┌────────────────────────────────────────────────────────────────────┐
+│ RADIOLOGY                                      CASE #42             │
+├───────────────────────┬────────────────────────────────────────────┤
+│                       │ AGENT ASSESSMENT                            │
+│      IMAGING          │                                            │
+│                       │ Current hypothesis                          │
+│  current CT           │ "Likely progression"                       │
+│  previous CT          │                                            │
+│  lesion overlay       │ Confidence: 78%                            │
+│                       │                                            │
+│                       │ WHY                                        │
+│                       │ ↑ lesion size                              │
+│                       │ ↑ growth velocity                          │
+│                       │ morphology ambiguous                       │
+├───────────────────────┼────────────────────────────────────────────┤
+│ HISTORY               │ UNCERTAINTIES                              │
+│                       │                                            │
+│ 23 mm today           │ measurement variance                       │
+│ 17 mm 11 weeks ago    │ inflammatory possibility                   │
+│ 14 mm 6 months ago    │                                            │
+├───────────────────────┴────────────────────────────────────────────┤
+│ AGENT ACTIVITY                                                     │
+│                                                                    │
+│ ✓ compared previous scan                                           │
+│ ✓ calculated growth                                                │
+│ ● checking prior report                                            │
+│ ○ compare guideline threshold                                      │
+│                                                                    │
+│ Human: "Give growth rate more weight."                             │
+│                                                                    │
+│ Agent: Reassessing...                                               │
+├────────────────────────────────────────────────────────────────────┤
+│ DRAFT MDT POSITION                                                  │
+│                                                                    │
+│ "Imaging progression is sufficiently concerning..."               │
+│                                                                    │
+│                     [PUBLISH TO MDT]                                │
+└────────────────────────────────────────────────────────────────────┘
+
+----------------------------------------------------------------------
+24. FINAL CONVERGENCE
+----------------------------------------------------------------------
+
+When the Chair determines that blocking friction has been resolved:
+
+central screen changes dramatically.
+
+Display:
+
+    PROPOSED MDT PLAN
+
+Then every relevant specialist workspace receives:
+
+    MDT PROPOSED PLAN
+
+    [CONCUR]
+    [OBJECT]
+    [CONCUR WITH COMMENT]
+
+Agents may autonomously concur where policy allows.
+
+Humans are surfaced when review/escalation rules require them.
+
+If somebody objects:
+
+    ObjectionRaised
+
+and the system returns to:
+
+    TARGETED_DISCUSSION
+
+If all required concurrence is obtained:
+
+    MDT PLAN AGREED
+
+Show provenance:
+
+- participating roles
+- agent/human contributions
+- evidence used
+- unresolved uncertainty
+- dissent if any
+- relevant guidelines
+- timestamp
+- final decision
+
+----------------------------------------------------------------------
+25. DEMO STORY
+----------------------------------------------------------------------
+
+Build ONE excellent patient scenario rather than ten mediocre ones.
+
+The scenario should deliberately create:
+
+1. initial apparent agreement;
+2. one non-obvious contradiction;
+3. research required;
+4. protocol/guideline lookup;
+5. specialist disagreement;
+6. human steering of one agent;
+7. memory nudge;
+8. new evidence changing one position;
+9. friction resolution;
+10. final convergence.
+
+Script it so that it reliably demonstrates the architecture.
+
+Example dramatic sequence:
+
+00:00
+Chair:
+"Next patient."
+
+00:02
+All screens transform.
+
+00:05
+Radiology analyzing.
+Oncology analyzing.
+Research searching.
+Protocol checking Dutch guidance.
+
+00:10
+Positions begin appearing centrally.
+
+00:15
+Chair detects:
+
+    2 FRICTION POINTS
+
+00:20
+One resolves automatically from evidence.
+
+00:25
+Radiology escalates an ambiguous imaging issue.
+
+Open Radiologist workspace.
+
+00:30
+Audience watches agent reasoning trace.
+
+Radiologist says/types:
+
+    "Give the growth kinetics more weight."
+
+Agent visibly reassesses.
+
+00:40
+Updated position published.
+
+00:45
+Research Agent finds relevant European evidence.
+
+00:50
+Protocol Agent determines applicability.
+
+00:55
+Central screen:
+
+    1 → 0 unresolved friction points
+
+01:00
+Proposed plan appears.
+
+All specialist screens:
+
+    CONCUR?
+
+01:05
+Concurrence arrives.
+
+01:10
+
+    MDT PLAN AGREED
+
+The entire demo should take roughly 60–90 seconds.
+
+----------------------------------------------------------------------
+26. TECHNOLOGY
+----------------------------------------------------------------------
+
+Choose a stack optimized for rapid implementation and excellent UX.
+
+Suggested:
+
+Frontend:
+- React / Next.js
+- TypeScript
+- modern component library
+- excellent motion/transitions
+- WebSockets or SSE
+
+Backend:
+- Python FastAPI OR TypeScript
+- simple persistent state
+- event bus
+- WebSocket/SSE delivery
+
+Agents:
+
+Prefer clean abstraction around the model/runtime.
+
+Possible implementations include:
+
+- Microsoft Agent Framework
+- GitHub Copilot SDK where it adds useful interactive agent capabilities
+- OpenAI Responses API / equivalent model abstraction
+- lightweight custom agent loop
+
+Do NOT introduce a heavy multi-agent framework merely because it exists.
+
+The architecture should make clear:
+
+    Agent runtime != MDT orchestration.
+
+The MDT state machine/event model is OUR application architecture.
+
+Agents participate in it.
+
+----------------------------------------------------------------------
+27. AGENT MODEL
+----------------------------------------------------------------------
+
+Conceptually:
+
+class MDTAgent:
+    role
+    role_prompt
+    tools
+    patient_context
+    role_context
+    memory
+    working_state
+
+    analyse()
+    request_tool()
+    raise_uncertainty()
+    request_human()
+    publish_position()
+    respond_to_challenge()
+
+Specializations:
+
+RadiologyAgent
+OncologyAgent
+SurgeryAgent
+PathologyAgent
+ResearchAgent
+ProtocolAgent
+
+ChairAgent is different:
+
+ChairAgent
+    activate_case()
+    delegate()
+    collect_positions()
+    detect_friction()
+    request_followup()
+    propose_consensus()
+    request_concurrence()
+    close_case()
+
+----------------------------------------------------------------------
+28. TOOL / SKILL MODEL
+----------------------------------------------------------------------
+
+Agents should use explicit skills/tools rather than pretending everything is model knowledge.
+
+Examples:
+
+get_patient_summary
+get_patient_timeline
+
+get_lab_results
+get_pathology
+get_imaging
+compare_imaging
+
+search_dutch_guidelines
+search_esmo
+search_pubmed
+search_medrxiv
+
+search_ctis
+search_clinical_trials
+
+get_trial_protocol
+check_protocol_endpoints
+check_protocol_amendments
+
+check_ema_authorization
+
+compare_patient_to_study_population
+
+retrieve_clinician_memory
+
+publish_position
+raise_friction
+request_specialist_review
+
+For the first prototype, tools can return curated/mock data where necessary.
+
+Clearly separate mock tools from live tools.
+
+----------------------------------------------------------------------
+29. OPTIONAL: EHR / COMPUTER USE
+----------------------------------------------------------------------
+
+If feasible, include a simulated EHR/EPIC-like environment.
+
+A computer-use agent can:
+
+- open the patient
+- navigate the dossier
+- extract relevant data
+- convert it into structured patient context
+- optionally map information into FHIR
+
+This creates another strong demonstration:
+
+    "What is an app but a slow API?"
+
+The existing clinical application becomes an information source even where a clean API does not exist.
+
+However:
+
+THIS IS SECONDARY.
+
+Do not let EHR computer-use integration delay the core MDT experience.
+
+----------------------------------------------------------------------
+30. SAFETY / DEMO BOUNDARIES
+----------------------------------------------------------------------
+
+Clearly label:
+
+    DEMONSTRATION SYSTEM
+    NOT FOR CLINICAL USE
+
+Never imply that model confidence equals calibrated medical probability.
+
+Do not fabricate medical sources.
+
+If using live evidence retrieval:
+- cite sources;
+- expose provenance;
+- distinguish abstract from full text;
+- distinguish preprint from peer review;
+- distinguish NL/EU/US guidance.
+
+The purpose is to demonstrate a future interaction model, not diagnose or treat a real patient.
+
+----------------------------------------------------------------------
+31. ARCHITECTURAL PRINCIPLE
+----------------------------------------------------------------------
+
+Avoid:
+
+                 GIANT AGENT
+                     │
+           pretend to be everybody
+                     │
+                 answer
+
+Build:
+
+              SHARED MDT STATE
+                     │
+              EVENT / MESSAGE BUS
+                     │
+       ┌─────────────┼─────────────┐
+       │             │             │
+    ROLE AGENT    ROLE AGENT    ROLE AGENT
+       │             │             │
+   ROLE TOOLS     ROLE TOOLS     ROLE TOOLS
+       │             │             │
+   ROLE MEMORY    ROLE MEMORY    ROLE MEMORY
+       │             │             │
+   ROLE UI        ROLE UI        ROLE UI
+
+                     ▲
+                     │
+                CHAIR AGENT
+                     │
+                MDT STATE MACHINE
+
+This distinction is fundamental.
+
+----------------------------------------------------------------------
+32. UX PRINCIPLE
+----------------------------------------------------------------------
+
+The audience should SEE intelligence happening.
+
+Do not hide everything behind:
+
+    spinner...
+    spinner...
+    spinner...
+    final answer.
+
+Expose:
+
+    what the agent is doing
+    what it found
+    what it discarded
+    what changed its assessment
+    what it is uncertain about
+    what requires human judgment
+
+But never expose raw hidden model chain-of-thought.
+
+Use concise structured reasoning artifacts.
+
+----------------------------------------------------------------------
+33. CORE DEMO MESSAGE
+----------------------------------------------------------------------
+
+The prototype should make this conceptual transition obvious:
+
+TODAY:
+
+    Humans run the MDT.
+    Software supplies information.
+
+AGENTIC-FIRST:
+
+    Agents continuously assemble, investigate,
+    challenge and reconcile the case.
+
+    Humans contribute judgment where judgment
+    materially changes the outcome.
+
+The multidisciplinary team remains multidisciplinary.
+
+What changes is that every participant now has an agent working through
+their professional lens, while a shared orchestration layer continuously
+turns those specialist perspectives into a coherent clinical discussion.
+
+----------------------------------------------------------------------
+34. IMPLEMENTATION APPROACH
+----------------------------------------------------------------------
+
+Before coding:
+
+1. Inspect the repository.
+2. Select the smallest sensible architecture.
+3. Write a short implementation plan.
+4. Define the event model.
+5. Define MDT state.
+6. Define Position / Claim / Evidence / Friction schemas.
+7. Define the scripted patient scenario.
+8. Define role-specific views.
+9. Implement the central MDT screen FIRST.
+10. Implement one excellent role workspace: Radiology.
+11. Wire Radiology → MDT event flow.
+12. Add Research and Protocol agents.
+13. Add remaining specialist roles.
+14. Add friction detection.
+15. Add targeted second round.
+16. Add concurrence.
+17. Add memory nudges.
+18. Polish animation and demo timing.
+
+Do not begin by building infrastructure.
+
+----------------------------------------------------------------------
+35. FIRST MILESTONE
+----------------------------------------------------------------------
+
+The first working vertical slice must demonstrate:
+
+Chair clicks:
+
+    START CASE
+
+Central screen activates.
+
+Radiology workspace activates automatically.
+
+Radiology Agent:
+    analyses curated case data
+    emits visible activity events
+    constructs structured reasoning trace
+    produces Position
+
+Position appears automatically on central MDT screen.
+
+Research Agent:
+    performs evidence lookup
+    publishes Evidence
+
+Chair:
+    detects one disagreement
+    creates Friction
+
+Central screen:
+    visually highlights Friction
+
+Radiologist:
+    provides one human steering instruction
+
+Radiology Agent:
+    updates assessment
+    republishes Position
+
+Chair:
+    resolves Friction
+    proposes MDT Plan
+
+All screens:
+    receive concurrence request
+
+Final screen:
+    MDT PLAN AGREED
+
+Get this working end-to-end before adding anything else.
+
+----------------------------------------------------------------------
+36. FINAL REQUIREMENT
+----------------------------------------------------------------------
+
+Do not optimize the prototype for showing "how many AI features we have."
+
+Optimize it for ONE reaction from clinicians watching:
+
+    "Yes. That actually looks like our MDT —
+     except every person at the table suddenly has
+     an extremely capable assistant working for them,
+     and the meeting itself has become intelligent."
+
+Build that.

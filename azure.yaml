@@ -1,0 +1,15 @@
+name: mdt-observatory
+metadata:
+  template: mdt-observatory@0.1.0
+infra:
+  provider: bicep
+  path: infra
+services:
+  web:
+    project: .
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+# Use scripts\deploy.ps1 after azure-validate -> azure-deploy approval.
+# Plain azd up/deploy requires Docker and bypasses the SQLite maintenance gate.
