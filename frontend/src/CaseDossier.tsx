@@ -7,7 +7,7 @@ import type { EvidenceSelection } from './ui';
 import type { Data, Meeting, Role } from './types';
 import { clinicalCaseKind, clinicalProfile } from './caseProfiles';
 
-const panel = 'min-w-0 rounded-2xl border border-cp-border bg-cp-surface p-5 sm:p-6';
+const panel = 'min-w-0 card p-5 sm:p-6';
 export const object = (value: unknown): Data => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Data : {};
 const rows = (value: unknown): Data[] => Array.isArray(value) ? value.map(object) : [];
 const path = (value: unknown, ...keys: string[]): unknown => keys.reduce<unknown>((item, key) => object(item)[key], value);

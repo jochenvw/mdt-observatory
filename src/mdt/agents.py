@@ -22,7 +22,7 @@ from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
 from openai.types.responses import Response, ResponseInputParam, ToolParam
 from openai.types.responses.response_input_param import ResponseInputItemParam
 from opentelemetry import trace
-from opentelemetry.trace import Status, StatusCode
+from opentelemetry.trace import Span, Status, StatusCode
 from pydantic import ValidationError
 
 from mdt.case_registry import APPLICABILITY_ROLES, CaseDefinition, get_case
@@ -370,13 +370,36 @@ def _source_text(value: Any) -> str:
     return str(value)
 
 
-def _compact_case_context(context: dict[str, Any]) -> dict[str, Any]:
-    result = deepcopy(context)
-    references: dict[str, str] = {}
+def _hoist_shared_field(
+    items: list[dict[str, Any]],
+    field: str,
+    *,
+    target: str,
+    path: str,
+    result: dict[str, Any],
+    references: dict[str, str],
+) -> None:
+    """Replace a field every item repeats with one shared entry."""
+    common = items[0][field]
+    if not all(item[field] == common for item in items):
+        return
+    result[target] = common
+    for item in items:
+        del item[field]
+    references[path] = target
+
+
+def _drop_duplicate_risk(
+    result: dict[str, Any], tables: list[Any], references: dict[str, str]
+) -> None:
     if "risk" in result and result["risk"] == result.get("caveats"):
         del result["risk"]
         references["risk"] = "caveats"
-    tables = result.get("source_tables", [])
+
+
+def _reference_source_tables(
+    result: dict[str, Any], tables: list[Any], references: dict[str, str]
+) -> None:
     for key in ("risk_dashboard", "differentials"):
         if key not in result:
             continue
@@ -388,52 +411,88 @@ def _compact_case_context(context: dict[str, Any]) -> dict[str, Any]:
                 del result[key]
                 references[key] = f"source_tables[{index}]"
                 break
-    if research := result.get("research_context"):
-        text = research.get("text", "")
-        research_tables = research.get("tables", [])
-        cells = [
-            cell for table in research_tables
-            for row in [table["columns"], *table["rows"]] for cell in row
-        ]
-        if cells and all(cell in text for cell in cells):
-            del research["tables"]
-            references["research_context.tables"] = "research_context.text"
-    if alternatives := result.get("management_alternatives"):
-        encoded = _source_text(alternatives).replace("**", "")
-        for index, table in enumerate(tables):
-            if table["columns"][0] == "Strategy" and all(
-                cell.replace("**", "") in encoded for row in table["rows"] for cell in row
-            ):
-                tables[index] = {
-                    "columns": table["columns"],
-                    "representation_reference": "management_alternatives",
-                }
-        common = alternatives[0]["evidence"]
-        if all(item["evidence"] == common for item in alternatives):
-            result["management_evidence_shared_by_all_alternatives"] = common
-            for item in alternatives:
-                del item["evidence"]
-            references["management_alternatives[*].evidence"] = (
-                "management_evidence_shared_by_all_alternatives"
-            )
-    if consultations := result.get("consult_perspectives"):
-        for item in consultations:
-            for table_index, table in enumerate(tables):
-                for row_index, row in enumerate(table.get("rows", [])):
-                    if item["specialty"] in row and item["contribution"] in row:
-                        item["contribution"] = {
-                            "representation_reference": (
-                                f"source_tables[{table_index}].rows[{row_index}]"
-                            ),
-                        }
-        common = consultations[0]["interpretation"]
-        if all(item["interpretation"] == common for item in consultations):
-            result["consultation_scope_shared_by_all_perspectives"] = common
-            for item in consultations:
-                del item["interpretation"]
-            references["consult_perspectives[*].interpretation"] = (
-                "consultation_scope_shared_by_all_perspectives"
-            )
+
+
+def _drop_restated_research_tables(
+    result: dict[str, Any], tables: list[Any], references: dict[str, str]
+) -> None:
+    research = result.get("research_context")
+    if not research:
+        return
+    text = research.get("text", "")
+    cells = [
+        cell for table in research.get("tables", [])
+        for row in [table["columns"], *table["rows"]] for cell in row
+    ]
+    if cells and all(cell in text for cell in cells):
+        del research["tables"]
+        references["research_context.tables"] = "research_context.text"
+
+
+def _compact_management_alternatives(
+    result: dict[str, Any], tables: list[Any], references: dict[str, str]
+) -> None:
+    alternatives = result.get("management_alternatives")
+    if not alternatives:
+        return
+    encoded = _source_text(alternatives).replace("**", "")
+    for index, table in enumerate(tables):
+        if table["columns"][0] == "Strategy" and all(
+            cell.replace("**", "") in encoded for row in table["rows"] for cell in row
+        ):
+            tables[index] = {
+                "columns": table["columns"],
+                "representation_reference": "management_alternatives",
+            }
+    _hoist_shared_field(
+        alternatives, "evidence",
+        target="management_evidence_shared_by_all_alternatives",
+        path="management_alternatives[*].evidence",
+        result=result, references=references,
+    )
+
+
+def _compact_consult_perspectives(
+    result: dict[str, Any], tables: list[Any], references: dict[str, str]
+) -> None:
+    consultations = result.get("consult_perspectives")
+    if not consultations:
+        return
+    for item in consultations:
+        for table_index, table in enumerate(tables):
+            for row_index, row in enumerate(table.get("rows", [])):
+                if item["specialty"] in row and item["contribution"] in row:
+                    item["contribution"] = {
+                        "representation_reference": (
+                            f"source_tables[{table_index}].rows[{row_index}]"
+                        ),
+                    }
+    _hoist_shared_field(
+        consultations, "interpretation",
+        target="consultation_scope_shared_by_all_perspectives",
+        path="consult_perspectives[*].interpretation",
+        result=result, references=references,
+    )
+
+
+# Each pass replaces one duplicated representation with a reference to the copy
+# that stays in the request. Order is preserved: later passes read the tables
+# earlier ones may already have referenced.
+_COMPACTION_PASSES = (
+    _drop_duplicate_risk,
+    _reference_source_tables,
+    _drop_restated_research_tables,
+    _compact_management_alternatives,
+    _compact_consult_perspectives,
+)
+
+
+def _compact_case_context(context: dict[str, Any]) -> dict[str, Any]:
+    result = deepcopy(context)
+    references: dict[str, str] = {}
+    tables = result.get("source_tables", [])
+    for compaction in _COMPACTION_PASSES:
+        compaction(result, tables, references)
     if references:
         result["equivalent_source_references"] = references
     return result
@@ -701,46 +760,57 @@ async def _azure_request[T: Response](
             await asyncio.sleep(TRANSPORT_RETRY_DELAY_SECONDS)
 
 
-async def _azure_position(state: RunState, emit: Emit) -> Position:
+def _azure_target() -> tuple[str, str]:
+    """Return the validated resource-root endpoint and deployment name."""
     endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").strip().rstrip("/")
     deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "").strip()
-    parsed_endpoint = urlsplit(endpoint)
+    parsed = urlsplit(endpoint)
     if (
         not deployment
-        or parsed_endpoint.scheme != "https"
-        or not parsed_endpoint.hostname
-        or parsed_endpoint.path not in ("", "/")
-        or parsed_endpoint.query
-        or parsed_endpoint.fragment
-        or parsed_endpoint.username
-        or parsed_endpoint.password
+        or parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.path not in ("", "/")
+        or parsed.query
+        or parsed.fragment
+        or parsed.username
+        or parsed.password
     ):
         raise AgentRuntimeError(
             "Azure requires AZURE_OPENAI_DEPLOYMENT and an HTTPS resource-root "
             "AZURE_OPENAI_ENDPOINT."
         )
+    return endpoint, deployment
+
+
+async def _azure_client(endpoint: str, stack: AsyncExitStack) -> AsyncOpenAI:
+    """Build a client bound to managed identity unless an explicit key is configured."""
+    api_key: str | Callable[[], Awaitable[str]]
+    if configured_key := os.getenv("AZURE_OPENAI_API_KEY", "").strip():
+        api_key = configured_key
+    else:
+        credential = stack.enter_context(DefaultAzureCredential())
+        provider = get_bearer_token_provider(credential, "https://ai.azure.com/.default")
+
+        async def token_provider() -> str:
+            return await asyncio.to_thread(provider)
+
+        api_key = token_provider
+    return await stack.enter_async_context(
+        AsyncOpenAI(
+            base_url=endpoint + "/openai/v1/",
+            api_key=api_key,
+            timeout=httpx.Timeout(90.0, connect=10.0, write=30.0, pool=10.0),
+            max_retries=0,
+        )
+    )
+
+
+async def _azure_position(state: RunState, emit: Emit) -> Position:
+    endpoint, deployment = _azure_target()
     messages = _messages(state)
     tools = _tools(state.role)
     async with AsyncExitStack() as stack:
-        api_key: str | Callable[[], Awaitable[str]]
-        if configured_key := os.getenv("AZURE_OPENAI_API_KEY", "").strip():
-            api_key = configured_key
-        else:
-            credential = stack.enter_context(DefaultAzureCredential())
-            provider = get_bearer_token_provider(credential, "https://ai.azure.com/.default")
-
-            async def token_provider() -> str:
-                return await asyncio.to_thread(provider)
-
-            api_key = token_provider
-        client = await stack.enter_async_context(
-            AsyncOpenAI(
-                base_url=endpoint + "/openai/v1/",
-                api_key=api_key,
-                timeout=httpx.Timeout(90.0, connect=10.0, write=30.0, pool=10.0),
-                max_retries=0,
-            )
-        )
+        client = await _azure_client(endpoint, stack)
         tool_call_ids: set[str] = set()
         for _ in range(MAX_MODEL_STEPS - 1):
             _reserve_call(state, messages, tools)
@@ -970,17 +1040,9 @@ def _safety_gates(position: Position, state: RunState) -> Position:
     return result
 
 
-async def analyze(
-    role: Role,
-    *,
-    case_id: str,
-    mode: str,
-    guidance: list[str],
-    phase: str,
-    emit: Emit,
-    settings: Settings | None = None,
-) -> Position:
-    """Run one isolated role analysis; the caller alone owns MDT rounds and publication."""
+def _validate_analysis_request(
+    role: Role, mode: str, phase: str, guidance: list[str]
+) -> None:
     if not isinstance(role, Role):
         raise ValueError("role must be a Role enum value.")
     if mode not in ("rehearsal", "azure"):
@@ -993,6 +1055,37 @@ async def analyze(
         or sum(len(item) for item in guidance) > MAX_GUIDANCE_CHARS
     ):
         raise ValueError("guidance must be a list of strings within the guidance budget.")
+
+
+def _failure_details(error: Exception, span: Span) -> dict[str, Any]:
+    """Record the provider identifiers that let an operator trace a failed call."""
+    details: dict[str, Any] = {"error_type": type(error).__name__}
+    if not isinstance(error, APIError):
+        return details
+    status_code = getattr(error, "status_code", None)
+    if isinstance(status_code, int):
+        details["status_code"] = status_code
+        span.set_attribute("http.response.status_code", status_code)
+    for attribute, key in (("request_id", "request_id"), ("code", "error_code")):
+        value = getattr(error, attribute, None)
+        if isinstance(value, str) and re.fullmatch(r"[\w.:-]{1,128}", value):
+            details[key] = value
+            span.set_attribute(f"azure.{key}", value)
+    return details
+
+
+async def analyze(
+    role: Role,
+    *,
+    case_id: str,
+    mode: str,
+    guidance: list[str],
+    phase: str,
+    emit: Emit,
+    settings: Settings | None = None,
+) -> Position:
+    """Run one isolated role analysis; the caller alone owns MDT rounds and publication."""
+    _validate_analysis_request(role, mode, phase, guidance)
     state = RunState(role, case_id, phase, list(guidance), settings=settings or Settings())
     with TRACER.start_as_current_span(
         "mdt.analysis", record_exception=False, set_status_on_exception=False
@@ -1024,17 +1117,7 @@ async def analyze(
         except (APIError, ValidationError, TimeoutError) as error:
             span.set_status(Status(StatusCode.ERROR))
             span.set_attribute("error.type", type(error).__name__)
-            details: dict[str, Any] = {"error_type": type(error).__name__}
-            if isinstance(error, APIError):
-                status_code = getattr(error, "status_code", None)
-                if isinstance(status_code, int):
-                    details["status_code"] = status_code
-                    span.set_attribute("http.response.status_code", status_code)
-                for attribute, key in (("request_id", "request_id"), ("code", "error_code")):
-                    value = getattr(error, attribute, None)
-                    if isinstance(value, str) and re.fullmatch(r"[\w.:-]{1,128}", value):
-                        details[key] = value
-                        span.set_attribute(f"azure.{key}", value)
+            details = _failure_details(error, span)
             summary = f"Specialist analysis failed: {type(error).__name__}; no rehearsal fallback."
             identifiers = ", ".join(
                 f"{key}={value}" for key, value in details.items() if key != "error_type"

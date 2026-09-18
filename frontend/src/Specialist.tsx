@@ -58,7 +58,7 @@ export function Specialist({ role, meeting, pending, guidance, setGuidance, stee
     </header>
     <div data-testid="role-attention" role={attention.tone === 'danger' ? 'alert' : 'status'} className={`mb-4 rounded-xl border-l-4 bg-cp-surface p-4 ${attention.tone === 'danger' ? 'border-cp-danger' : attention.tone === 'warning' ? 'border-cp-warning' : attention.tone === 'success' ? 'border-cp-success' : 'border-[var(--cp-role)]'}`}><Badge tone={attention.tone} pulse={attention.running}>{attention.title}</Badge><p className="mt-2 text-xs leading-6">{attention.detail}</p></div>
     <div data-testid="activity-desk" className="grid items-start gap-4 md:grid-cols-[minmax(0,1fr)_minmax(260px,0.9fr)]">
-      <section className="min-w-0 rounded-2xl border border-cp-border bg-cp-surface p-4">
+      <section className="min-w-0 card p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h2 className="text-base">Review activity</h2><Badge>Newest first</Badge></div>
         <ReasoningSteps state={state} open={() => setShowAssessment(true)} />
         <ActivityStream role={role} activity={activity} />
@@ -66,7 +66,7 @@ export function Specialist({ role, meeting, pending, guidance, setGuidance, stee
       </section>
       <div className="min-w-0 space-y-4">
         {review}
-        <details open={!review} className="min-w-0 rounded-2xl border border-cp-border bg-cp-surface p-4 steering-panel">
+        <details open={!review} className="min-w-0 card p-4 steering-panel">
           <summary className="text-sm font-semibold"><MessageSquareText size={18} />Steer your specialist</summary><p className="my-3 text-xs leading-6 text-cp-text-muted">Ask a focused clinical question or challenge the assessment.</p>
           <form onSubmit={event => { event.preventDefault(); void steer(); }}>
             <label className="sr-only" htmlFor={`guidance-${role}`}>Guidance for {meta.label}</label>
@@ -75,7 +75,7 @@ export function Specialist({ role, meeting, pending, guidance, setGuidance, stee
           </form>
           {(state?.guidance.length ?? 0) > 0 && <div className="guidance-receipt mt-4 flex items-start gap-3 border-t border-cp-border pt-4 [&>svg]:text-cp-success [&_strong]:text-xs [&_p]:my-1 [&_p]:text-xs [&_p]:leading-7 [&_small]:text-[10px] [&_small]:text-cp-text-muted"><Check size={15} /><div><strong>Human guidance received</strong><p>{state?.guidance.at(-1)}</p><small>{/REASSESS|ANALYZ|WORKING/i.test(state?.status ?? '') ? 'Agent reassessing…' : `Current position revision ${state?.revision ?? 0} · see activity for reassessment outcome`}</small></div></div>}
         </details>
-        <details className="min-w-0 rounded-2xl border border-cp-border bg-cp-surface p-4"><summary className="text-sm font-semibold"><Brain size={18} />Saved review preferences</summary>
+        <details className="min-w-0 card p-4"><summary className="text-sm font-semibold"><Brain size={18} />Saved review preferences</summary>
           {memories.length ? <div className="memory-list space-y-3">{memories.map(item => <article className={`memory-card rounded-xl border border-cp-border bg-cp-bg-elevated p-4 [&>p]:my-3 [&>p]:text-xs [&>p]:leading-7 ${item.status === 'FORGOTTEN' ? 'forgotten [&>p]:italic [&>p]:text-cp-text-muted' : ''}`} key={item.id}>
             <div className="row flex items-center gap-2 between justify-between wrap flex-wrap"><Badge>{label(item.category)}</Badge><Status value={item.status} /></div>
             <p>{item.status === 'FORGOTTEN' ? 'This memory has been forgotten.' : item.text}</p>
@@ -84,7 +84,7 @@ export function Specialist({ role, meeting, pending, guidance, setGuidance, stee
         </details>
       </div>
     </div>
-    <details className="my-5 rounded-2xl border border-cp-border bg-cp-surface p-4"><summary className="text-sm font-semibold">Open {meta.label.toLowerCase()} clinical workspace and source records <ChevronDown size={14} /></summary>
+    <details className="my-5 card p-4"><summary className="text-sm font-semibold">Open {meta.label.toLowerCase()} clinical workspace and source records <ChevronDown size={14} /></summary>
       <div className="mt-4 space-y-5">
         {profile ? <CaseClinical role={role} meeting={meeting} inspect={inspect} /> : conversionCase ? <ConversionClinical role={role} meeting={meeting} inspect={inspect} /> : <>
           {role === 'radiology' && <Radiology context={context} />}
@@ -95,9 +95,9 @@ export function Specialist({ role, meeting, pending, guidance, setGuidance, stee
           {role === 'protocol' && <Protocol context={context} meeting={meeting} inspect={inspect} />}
           {role === 'patient' && <Patient context={context} />}
         </>}
-        {(profile || conversionCase || role !== 'research' && role !== 'protocol') && state?.position && <section className="panel min-w-0 rounded-2xl border border-cp-border bg-cp-surface p-5"><SectionHeading eyebrow="CLAIM → SOURCE" title="What supports this position" /><ClaimList state={state} inspect={inspect} /></section>}
+        {(profile || conversionCase || role !== 'research' && role !== 'protocol') && state?.position && <section className="panel p-5!"><SectionHeading eyebrow="CLAIM → SOURCE" title="What supports this position" /><ClaimList state={state} inspect={inspect} /></section>}
       </div>
-    {state?.position && <section className="panel min-w-0 rounded-2xl border border-cp-border bg-cp-surface p-5 sm:p-6 specialist-position my-5 [&>h3]:my-3 [&>h3]:text-xl [&>p]:text-sm [&>p]:leading-7 [&>p]:text-cp-text-muted [&>details]:mt-4"><SectionHeading eyebrow={`SHARED WITH MDT · REVISION ${state.revision}`} title="Published specialist position" aside={<Badge tone="accent">{state.position.autonomy}</Badge>} /><Badge tone="success">Position published</Badge><h3>{state.position.position}</h3><p>{state.position.recommendation}</p><div className="position-meta mt-5 flex flex-wrap items-center gap-3 border-t border-cp-border pt-4 [&>.muted]:text-xs"><Badge>{label(state.position.stance)}</Badge><Badge>{state.position.human_intervention ? 'Human-steered' : 'Agent contribution'}</Badge><span className="muted text-sm leading-7 text-cp-text-muted">Clinical judgment and the conditions of the recommendation remain essential.</span></div>{state.position.questions_for_mdt.length > 0 && <><h4>Questions for the MDT</h4><BulletList items={state.position.questions_for_mdt} /></>}<details><summary>Position provenance <ChevronDown size={14} /></summary><BulletList items={state.position.provenance} /></details></section>}
+    {state?.position && <section className="panel specialist-position my-5 [&>h3]:my-3 [&>h3]:text-xl [&>p]:text-sm [&>p]:leading-7 [&>p]:text-cp-text-muted [&>details]:mt-4"><SectionHeading eyebrow={`SHARED WITH MDT · REVISION ${state.revision}`} title="Published specialist position" aside={<Badge tone="accent">{state.position.autonomy}</Badge>} /><Badge tone="success">Position published</Badge><h3>{state.position.position}</h3><p>{state.position.recommendation}</p><div className="position-meta mt-5 flex flex-wrap items-center gap-3 border-t border-cp-border pt-4 [&>.muted]:text-xs"><Badge>{label(state.position.stance)}</Badge><Badge>{state.position.human_intervention ? 'Human-steered' : 'Agent contribution'}</Badge><span className="muted text-sm leading-7 text-cp-text-muted">Clinical judgment and the conditions of the recommendation remain essential.</span></div>{state.position.questions_for_mdt.length > 0 && <><h4>Questions for the MDT</h4><BulletList items={state.position.questions_for_mdt} /></>}<details><summary>Position provenance <ChevronDown size={14} /></summary><BulletList items={state.position.provenance} /></details></section>}
     </details>
     {showAssessment && <Modal title={`${meta.label} assessment and uncertainties`} close={() => setShowAssessment(false)} wide><Assessment state={state} /></Modal>}
     {liveMemory && <Modal title="Memory provenance" close={() => setMemory(null)}><Badge tone="warning">Nudge, not evidence or clinical policy</Badge><h3>{liveMemory.status === 'FORGOTTEN' ? 'Memory forgotten' : liveMemory.text}</h3><DataFields data={{ category: liveMemory.category, role: liveMemory.role, clinician: liveMemory.clinician_id, source: liveMemory.source, date: liveMemory.date, status: liveMemory.status }} /><p className="muted text-sm leading-7 text-cp-text-muted">Preferences and experiential nudges do not become medical facts. Explicit use, ignore and forget actions are recorded by the meeting service.</p></Modal>}
@@ -126,7 +126,7 @@ function ReasoningSteps({ state, open }: { state?: RoleState; open: () => void }
 }
 function Assessment({ state }: { state?: RoleState }) {
   const trace = state?.trace;
-  return <section className="panel min-w-0 rounded-2xl border border-cp-border bg-cp-surface p-5 sm:p-6 assessment"><SectionHeading eyebrow="SPECIALIST ASSESSMENT · BASIS FOR REVIEW" title="Specialist assessment" aside={<Sparkles size={20} />} />
+  return <section className="panel assessment"><SectionHeading eyebrow="SPECIALIST ASSESSMENT · BASIS FOR REVIEW" title="Specialist assessment" aside={<Sparkles size={20} />} />
     {state?.error && <div role="alert" className="alert">{state.error}</div>}
     <div className="assessment-current rounded-r-xl border-l-2 border-[var(--cp-role,var(--cp-accent))] bg-cp-bg-elevated p-4 [&_h3]:mt-2 [&_h3]:font-medium [&_h3]:leading-7"><span className="eyebrow">CURRENT ASSESSMENT</span><h3>{clinicalText(trace?.assessment ?? '', 'Waiting for specialist review.')}</h3></div>
     {trace?.hypothesis && <div className="hypothesis mt-5 flex items-start gap-3 [&>svg]:mt-1 [&>svg]:text-cp-accent [&_h4]:mt-0 [&_p]:text-xs [&_p]:leading-7 [&_p]:text-cp-text-muted"><Focus size={18} /><div><h4>Working hypothesis</h4><p>{clinicalText(trace.hypothesis)}</p></div></div>}
@@ -152,7 +152,7 @@ function Radiology({ context }: { context: Data }) {
   const measurements = Object.entries(context).filter(([key, value]) => /mm|weeks|growth|volume|interval|diameter/i.test(key) && (typeof value === 'string' || typeof value === 'number')).slice(0, 4);
   const series = imagingSeries(context);
   return <>
-    <section data-testid="clinical-radiology" className="panel min-w-0 rounded-2xl border border-cp-border bg-cp-surface p-5 sm:p-6 imaging-panel border-t-4! border-t-cp-link!"><SectionHeading eyebrow="RADIOLOGY / LONGITUDINAL REVIEW" title="Longitudinal imaging review" aside={<ScanLine size={21} />} />
+    <section data-testid="clinical-radiology" className="panel imaging-panel border-t-4! border-t-cp-link!"><SectionHeading eyebrow="RADIOLOGY / LONGITUDINAL REVIEW" title="Longitudinal imaging review" aside={<ScanLine size={21} />} />
       <div className="imaging-toolbar mb-4 flex flex-wrap items-center justify-between gap-3"><div className="segmented inline-flex rounded-lg border border-cp-border bg-cp-surface-soft p-1 [&>button]:flex [&>button]:items-center [&>button]:gap-2 [&>button]:rounded-md [&>button]:border-0 [&>button]:px-3 [&>button]:py-2 [&>button]:text-xs [&>button[aria-pressed=true]]:bg-cp-surface [&>button[aria-pressed=true]]:text-cp-accent"><button aria-pressed={view === 'compare'} onClick={() => setView('compare')}><Layers size={14} />Compare</button><button aria-pressed={view === 'current'} onClick={() => setView('current')}>Current</button></div><button className="text-button" aria-pressed={overlay} onClick={() => setOverlay(value => !value)}><Eye size={15} />Overlay {overlay ? 'on' : 'off'}</button></div>
       <div className={`scan-pair grid grid-cols-2 gap-3 ${view === 'current' ? 'single mx-auto max-w-xl grid-cols-1!' : ''}`}>{view === 'compare' && <IllustrativeScan previous overlay={overlay} measurement={series.at(-2)} />}<IllustrativeScan overlay={overlay} measurement={series.at(-1)} /></div>
       <div className="illustration-notice mt-3 flex items-center justify-center gap-2 text-center font-mono text-[8px] text-cp-link"><Fingerprint size={15} /><span>ILLUSTRATIVE SVG · NOT A PATIENT SCAN · NOT TO SCALE</span></div>
@@ -198,7 +198,7 @@ function Oncology({ context, meeting }: { context: Data; meeting: Meeting }) {
   </section>;
 }
 function Surgery({ context }: { context: Data }) {
-  return <section data-testid="clinical-surgery" className="overflow-hidden rounded-2xl border border-cp-border bg-cp-surface">
+  return <section data-testid="clinical-surgery" className="overflow-hidden card">
     <div className="flex flex-wrap items-center justify-between gap-4 border-b-4 border-cp-success p-6"><div><p className="eyebrow">OPERABILITY REVIEW</p><h2 className="mt-2">Feasible does not yet mean suitable.</h2></div><Badge>Review gates, not completed checks</Badge></div>
     <div className="grid lg:grid-cols-[1.2fr_1fr]">
       <div className="space-y-4 border-cp-border p-5 lg:border-r"><ClinicalBlock title="01 / Anatomical resectability" subtitle="Local extent and procedural constraints" context={context} keys={/anatom|lesion|operab|resect|surg|location/} className="border-l-4 border-l-cp-success" /><ClinicalBlock title="02 / Confirmation needed" subtitle="What must be known before a procedure?" context={context} keys={/confirm|tissue|biopsy|missing|uncertain|condition|question|reserve/} /></div>

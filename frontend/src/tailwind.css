@@ -137,6 +137,12 @@ html[data-theme="dark"] {
 @utility text-button {
   @apply inline-flex items-center gap-1.5 border-0! bg-[inherit]! py-1 text-xs font-medium text-cp-accent hover:underline;
 }
+@utility card {
+  @apply rounded-2xl border border-cp-border bg-cp-surface;
+}
+@utility panel {
+  @apply card min-w-0 p-5 sm:p-6;
+}
 @utility alert {
   @apply mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-cp-danger bg-cp-surface p-4 text-sm text-cp-danger;
   & > span { @apply min-w-0 flex-1 break-words; }
