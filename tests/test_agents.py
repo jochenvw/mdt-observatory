@@ -5,7 +5,7 @@ import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-import httpx
+import httpx2
 import pytest
 from openai import AsyncOpenAI
 
@@ -236,14 +236,14 @@ def _completion(
 def _mock_azure(
     monkeypatch: pytest.MonkeyPatch,
     responses: (
-        list[dict[str, Any] | httpx.Response]
-        | Callable[[dict[str, Any]], dict[str, Any] | httpx.Response]
+        list[dict[str, Any] | httpx2.Response]
+        | Callable[[dict[str, Any]], dict[str, Any] | httpx2.Response]
     ),
-) -> tuple[list[dict[str, Any]], list[httpx.AsyncClient]]:
+) -> tuple[list[dict[str, Any]], list[httpx2.AsyncClient]]:
     requests: list[dict[str, Any]] = []
-    clients: list[httpx.AsyncClient] = []
+    clients: list[httpx2.AsyncClient] = []
 
-    def handler(request: httpx.Request) -> httpx.Response:
+    def handler(request: httpx2.Request) -> httpx2.Response:
         assert str(request.url) == "https://demo.openai.azure.com/openai/v1/responses"
         assert request.extensions["timeout"] == {
             "connect": 10.0, "read": 90.0, "write": 30.0, "pool": 10.0,
@@ -251,14 +251,14 @@ def _mock_azure(
         body = json.loads(request.content)
         requests.append(body)
         response = responses(body) if callable(responses) else responses.pop(0)
-        if isinstance(response, httpx.Response):
+        if isinstance(response, httpx2.Response):
             return response
-        return httpx.Response(200, json=response, headers={"x-request-id": "req-mock"})
+        return httpx2.Response(200, json=response, headers={"x-request-id": "req-mock"})
 
     def factory(**kwargs: Any) -> AsyncOpenAI:
-        assert kwargs["timeout"] == httpx.Timeout(90.0, connect=10.0, write=30.0, pool=10.0)
+        assert kwargs["timeout"] == httpx2.Timeout(90.0, connect=10.0, write=30.0, pool=10.0)
         assert kwargs["max_retries"] == 0
-        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
         clients.append(client)
         return AsyncOpenAI(**kwargs, http_client=client)
 
@@ -708,12 +708,12 @@ async def test_timeout_is_explicit(monkeypatch: pytest.MonkeyPatch) -> None:
         await _run(Role.PATHOLOGY, mode="azure")
 
 
-@pytest.mark.parametrize("failure", [httpx.ReadTimeout, httpx.ConnectError])
+@pytest.mark.parametrize("failure", [httpx2.ReadTimeout, httpx2.ConnectError])
 @pytest.mark.parametrize("failed_stage", ["tool", "position"])
 @pytest.mark.parametrize("failures", [1, 2])
 async def test_transport_retry_is_bounded_without_repeating_tools_or_falling_back(
     monkeypatch: pytest.MonkeyPatch,
-    failure: type[httpx.TransportError],
+    failure: type[httpx2.TransportError],
     failed_stage: str,
     failures: int,
 ) -> None:
@@ -769,7 +769,7 @@ async def test_transport_retry_respects_pacing_and_overall_cancellation(
         times.append(asyncio.get_running_loop().time())
         if len(times) == 1:
             raise agents.APIConnectionError(
-                request=httpx.Request("POST", "https://demo.openai.azure.com")
+                request=httpx2.Request("POST", "https://demo.openai.azure.com")
             )
         return agents.Response.model_construct()
 
@@ -791,15 +791,15 @@ async def test_transport_and_rate_limit_retries_have_separate_finite_budgets(
     expected = await _run(Role.PATHOLOGY)
     calls = 0
 
-    def respond(body: dict[str, Any]) -> dict[str, Any] | httpx.Response:
+    def respond(body: dict[str, Any]) -> dict[str, Any] | httpx2.Response:
         nonlocal calls
         calls += 1
         if calls in (1, 3):
-            return httpx.Response(429, headers={"retry-after": "0.001"}, json={
+            return httpx2.Response(429, headers={"retry-after": "0.001"}, json={
                 "error": {"message": "Demonstration rate limit", "type": "rate_limit_error"}
             })
         if calls == 2:
-            raise httpx.ReadTimeout("Demonstration timeout")
+            raise httpx2.ReadTimeout("Demonstration timeout")
         if "text" in body:
             return _completion(content=expected.model_dump_json())
         return _completion(tool="inspect_pathology")
@@ -816,7 +816,7 @@ async def test_transport_retry_does_not_retry_other_service_errors(
     monkeypatch: pytest.MonkeyPatch, status: int,
 ) -> None:
     requests, clients = _mock_azure(monkeypatch, [
-        httpx.Response(status, json={"error": {"message": "Demonstration service failure"}})
+        httpx2.Response(status, json={"error": {"message": "Demonstration service failure"}})
     ])
     with pytest.raises(AgentRuntimeError):
         await _run(Role.PATHOLOGY, mode="azure")
@@ -977,11 +977,11 @@ async def test_429_retry_is_bounded_and_preserves_client_cleanup(
     expected = await _run(Role.PATHOLOGY)
     calls = 0
 
-    def respond(body: dict[str, Any]) -> dict[str, Any] | httpx.Response:
+    def respond(body: dict[str, Any]) -> dict[str, Any] | httpx2.Response:
         nonlocal calls
         calls += 1
         if calls <= rate_limits:
-            return httpx.Response(
+            return httpx2.Response(
                 429,
                 headers={"retry-after": "0.001"},
                 json={"error": {"message": "Synthetic rate limit", "type": "rate_limit_error"}},
@@ -1017,8 +1017,8 @@ def test_retry_after_supports_seconds_milliseconds_and_http_dates(
     headers: dict[str, str],
     expected: float,
 ) -> None:
-    response = httpx.Response(
-        429, headers=headers, request=httpx.Request("POST", "https://demo.openai.azure.com")
+    response = httpx2.Response(
+        429, headers=headers, request=httpx2.Request("POST", "https://demo.openai.azure.com")
     )
     error = agents.RateLimitError("Synthetic rate limit", response=response, body=None)
     assert agents._retry_after(error, 0) == expected
@@ -1026,10 +1026,10 @@ def test_retry_after_supports_seconds_milliseconds_and_http_dates(
 
 @pytest.mark.parametrize("value", ["61", "NaN", "infinity", "invalid"])
 def test_invalid_or_excessive_retry_after_never_causes_early_retry(value: str) -> None:
-    response = httpx.Response(
+    response = httpx2.Response(
         429,
         headers={"retry-after": value},
-        request=httpx.Request("POST", "https://demo.openai.azure.com"),
+        request=httpx2.Request("POST", "https://demo.openai.azure.com"),
     )
     error = agents.RateLimitError("Synthetic rate limit", response=response, body=None)
     with pytest.raises(AgentRuntimeError):
@@ -1043,10 +1043,10 @@ async def test_live_retry_waits_at_least_retry_after_and_emits_cooldown(
     timestamps: list[float] = []
     cooldowns: list[dict[str, Any]] = []
 
-    def respond(body: dict[str, Any]) -> dict[str, Any] | httpx.Response:
+    def respond(body: dict[str, Any]) -> dict[str, Any] | httpx2.Response:
         timestamps.append(asyncio.get_running_loop().time())
         if len(timestamps) == 1:
-            return httpx.Response(
+            return httpx2.Response(
                 429,
                 headers={"retry-after": "0.02"},
                 json={"error": {"message": "Synthetic rate limit", "type": "rate_limit_error"}},
@@ -1072,10 +1072,10 @@ async def test_exhausted_retries_preserve_cooldown_for_next_role(
 ) -> None:
     calls = 0
 
-    def respond(body: dict[str, Any]) -> httpx.Response:
+    def respond(body: dict[str, Any]) -> httpx2.Response:
         nonlocal calls
         calls += 1
-        return httpx.Response(
+        return httpx2.Response(
             429,
             headers={"retry-after": "60" if calls == 3 else "0.001"},
             json={"error": {"message": "Synthetic rate limit", "type": "rate_limit_error"}},
@@ -1163,10 +1163,10 @@ async def test_rate_limit_cooldown_is_shared_with_concurrent_requests() -> None:
         timestamps.append(asyncio.get_running_loop().time())
         attempts += 1
         if attempts == 1:
-            response = httpx.Response(
+            response = httpx2.Response(
                 429,
                 headers={"retry-after": "0.04"},
-                request=httpx.Request("POST", "https://demo.openai.azure.com"),
+                request=httpx2.Request("POST", "https://demo.openai.azure.com"),
             )
             raise agents.RateLimitError("Synthetic rate limit", response=response, body=None)
         return agents.Response.model_construct()
@@ -1204,7 +1204,7 @@ async def test_api_error_reports_safe_identifiers_without_response_body(
     _, clients = _mock_azure(
         monkeypatch,
         [
-            httpx.Response(
+            httpx2.Response(
                 400,
                 headers={"x-request-id": "req-safe-test"},
                 json={

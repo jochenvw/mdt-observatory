@@ -16,7 +16,7 @@ from typing import Any, cast
 from urllib.parse import urlsplit
 from weakref import WeakKeyDictionary
 
-import httpx
+import httpx2
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
 from openai.types.responses import Response, ResponseInputParam, ToolParam
@@ -799,7 +799,7 @@ async def _azure_client(endpoint: str, stack: AsyncExitStack) -> AsyncOpenAI:
         AsyncOpenAI(
             base_url=endpoint + "/openai/v1/",
             api_key=api_key,
-            timeout=httpx.Timeout(90.0, connect=10.0, write=30.0, pool=10.0),
+            timeout=httpx2.Timeout(90.0, connect=10.0, write=30.0, pool=10.0),
             max_retries=0,
         )
     )
