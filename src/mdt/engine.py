@@ -292,8 +292,6 @@ class Engine:
                 )
         except PersistenceFailure:
             raise
-        except (ValueError, RuntimeError, TimeoutError, OSError) as exc:
-            await self._role_error(role, exc)
         except Exception as exc:
             # Provider SDK errors vary; every failure becomes a persisted, visible failed role.
             await self._role_error(role, exc)

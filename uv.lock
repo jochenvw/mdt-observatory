@@ -1028,7 +1028,6 @@ dependencies = [
     { name = "azure-monitor-opentelemetry" },
     { name = "azure-storage-blob" },
     { name = "fastapi" },
-    { name = "httpx" },
     { name = "httpx2" },
     { name = "openai" },
     { name = "opentelemetry-instrumentation-fastapi" },
@@ -1038,6 +1037,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "httpx" },
     { name = "mypy" },
     { name = "playwright" },
     { name = "pytest" },
@@ -1052,7 +1052,6 @@ requires-dist = [
     { name = "azure-monitor-opentelemetry", specifier = ">=1.6,<2" },
     { name = "azure-storage-blob", specifier = ">=12.25,<13" },
     { name = "fastapi", specifier = ">=0.115,<1" },
-    { name = "httpx", specifier = ">=0.28,<1" },
     { name = "httpx2", specifier = ">=2.13,<3" },
     { name = "openai", specifier = ">=1.75,<4" },
     { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.52b0,<1" },
@@ -1062,6 +1061,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "httpx", specifier = ">=0.28,<1" },
     { name = "mypy", specifier = ">=1.15,<3" },
     { name = "playwright", specifier = ">=1.51,<2" },
     { name = "pytest", specifier = ">=8.3,<10" },
