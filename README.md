@@ -165,6 +165,12 @@ room; do not run it during someone else's presentation.
 - Only the curated demonstration case can be activated; there is no patient upload.
 - Cloud access uses a presenter token and a signed, HTTP-only, same-site cookie.
   This is demo access control, not clinical identity or legally valid signatures.
+  Ten failed sign-ins per client per minute are throttled; a correct token is
+  never throttled, so others' failures cannot lock the presenter out. In Azure,
+  `FORWARDED_ALLOW_IPS` trusts `X-Forwarded-For` only from the Container Apps
+  subnet, so the client address is the one the ingress recorded.
+- Commands are same-origin JSON with a declared `Content-Length` of at most
+  16 KB; chunked or unsized bodies are refused before they are read.
 - Local SQLite snapshots preserve events and decisions. Azure uses atomic JSON
   snapshots in Blob Storage through a private endpoint and managed identity,
   with ETags rejecting stale writes. Storage public access and Shared Key remain

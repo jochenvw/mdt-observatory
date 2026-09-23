@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -156,6 +157,55 @@ def test_api_validation_and_cross_origin_rejection(tmp_path: Path) -> None:
         assert exported.status_code == 200
         assert "attachment" in exported.headers["content-disposition"]
         assert exported.headers["cache-control"] == "no-store"
+
+
+def test_commands_without_a_declared_length_are_refused_before_parsing(tmp_path: Path) -> None:
+    settings = Settings(db_path=str(tmp_path / "api.db"), step_delay=0)
+    json_type = {"content-type": "application/json"}
+    oversized = b'{"token":"' + b"x" * 200_000 + b'"}'
+
+    def chunked() -> Iterator[bytes]:
+        yield oversized
+
+    with TestClient(create_app(settings)) as client:
+        assert client.post("/api/auth", content=chunked(), headers=json_type).status_code == 411
+        declared = {**json_type, "transfer-encoding": "chunked", "content-length": "2"}
+        assert client.post("/api/auth", content=b"{}", headers=declared).status_code == 411
+        assert client.post("/api/auth", content=oversized, headers=json_type).status_code == 413
+        invalid = {**json_type, "content-length": "abc"}
+        assert client.post("/api/auth", content=b"{}", headers=invalid).status_code == 400
+        assert client.post("/api/auth", json={"token": "any"}).status_code == 200
+
+
+def test_valid_token_is_never_locked_out_by_failed_attempts(tmp_path: Path) -> None:
+    token = "t" * 32
+    settings = Settings(db_path=str(tmp_path / "api.db"), presenter_token=token, step_delay=0)
+    application = create_app(settings)
+    attacker = TestClient(application, client=("203.0.113.9", 5000))
+    presenter = TestClient(application, client=("198.51.100.4", 5000))
+    for _ in range(10):
+        assert attacker.post("/api/auth", json={"token": "wrong"}).status_code == 401
+    assert attacker.post("/api/auth", json={"token": "wrong"}).status_code == 429
+    assert attacker.post("/api/auth", json={"token": token}).status_code == 200
+    assert presenter.post("/api/auth", json={"token": "wrong"}).status_code == 401
+    assert presenter.post("/api/auth", json={"token": token}).status_code == 200
+
+
+async def test_only_the_ingress_subnet_may_supply_the_client_address() -> None:
+    """Trusting the ACA subnet uses the address the ingress appended, not a spoofed one."""
+    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+    seen: list[str] = []
+
+    async def record(scope: Any, receive: Any, send: Any) -> None:
+        seen.append(scope["client"][0])
+
+    middleware = ProxyHeadersMiddleware(record, trusted_hosts="10.64.0.0/23")
+    forwarded = [(b"x-forwarded-for", b"6.6.6.6, 203.0.113.9")]
+    for peer in ("10.64.1.20", "192.0.2.1"):
+        scope = {"type": "http", "client": (peer, 1), "headers": forwarded, "scheme": "http"}
+        await middleware(scope, None, None)  # type: ignore[arg-type]
+    assert seen == ["203.0.113.9", "192.0.2.1"]
 
 
 def test_azure_not_silently_enabled_without_config(tmp_path: Path, monkeypatch: object) -> None:

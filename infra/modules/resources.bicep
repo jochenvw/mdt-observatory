@@ -17,6 +17,8 @@ param azureRequestIntervalSeconds int = 20
 
 var suffix = uniqueString(subscription().subscriptionId, resourceGroup().name)
 var appName = '${name}-vnet'
+// The Container Apps ingress runs in this subnet; only its X-Forwarded-For is trusted.
+var acaSubnetPrefix = '10.64.0.0/23'
 
 resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
   name: 'acrmdt${suffix}'
@@ -113,7 +115,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
       {
         name: 'aca'
         properties: {
-          addressPrefix: '10.64.0.0/23'
+          addressPrefix: acaSubnetPrefix
           delegations: [
             {
               name: 'container-apps'
@@ -283,6 +285,7 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = {
             { name: 'MDT_AZURE_REQUEST_INTERVAL_SECONDS', value: string(azureRequestIntervalSeconds) }
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', secretRef: 'applicationinsights-connection-string' }
             { name: 'OTEL_SERVICE_NAME', value: 'mdt-observatory' }
+            { name: 'FORWARDED_ALLOW_IPS', value: acaSubnetPrefix }
           ]
           probes: bootstrap ? [] : [
             {
