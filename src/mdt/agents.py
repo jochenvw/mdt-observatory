@@ -25,7 +25,7 @@ from opentelemetry import trace
 from opentelemetry.trace import Span, Status, StatusCode
 from pydantic import ValidationError
 
-from mdt.case_registry import APPLICABILITY_ROLES, CaseDefinition, get_case
+from mdt.case_registry import APPLICABILITY_ROLES, CaseDefinition, CaseRuntime, get_case
 from mdt.config import Settings
 from mdt.models import Claim, Evidence, Position, Role, Trace
 
@@ -130,13 +130,16 @@ def _targeted_imaging_guidance(guidance: list[str], terms: list[str]) -> bool:
     )
 
 
-def _lesion_comparison(mapping: Any) -> tuple[dict[str, Any], list[str]] | None:
+def _lesion_comparison(
+    mapping: Any, runtime: CaseRuntime | None = None
+) -> tuple[dict[str, Any], list[str]] | None:
     """Derive a descriptive size comparison from a case's lesion mapping.
 
     Cases that ship a mapping with every baseline and response diameter measured
     get this derived context and the matching observations. A case with no mapping,
     or with sites still unmeasured, is left to its own recorded observations rather
-    than given a sum that would misrepresent partial data.
+    than given a sum that would misrepresent partial data. Counts come from the
+    mapping; any case-specific wording or findings come from the case runtime.
     """
     if not isinstance(mapping, list) or not mapping:
         return None
@@ -152,21 +155,21 @@ def _lesion_comparison(mapping: Any) -> tuple[dict[str, Any], list[str]] | None:
     response = sum(last for _, last in measured)
     if not baseline:
         return None
+    wording = runtime or CaseRuntime.model_construct()
+    count = len(mapping)
     comparison = {
-        "mapped_site_count": len(mapping),
+        "mapped_site_count": count,
         "baseline_diameter_sum_mm": baseline,
         "response_diameter_sum_mm": response,
         "diameter_sum_change_pct": round((response - baseline) / baseline * 100, 1),
-        "method": "Descriptive sum of nine MRI longest diameters, NOT a formal RECIST "
-        "target set or measured volumetry; CT partial response is source-reported.",
+        "method": wording.lesion_method,
         "lesion_mapping": mapping,
     }
     observations = [
-        f"All {len(mapping)} original MRI liver sites remain represented.",
-        f"Nine-site descriptive diameter sum {baseline} → {response} mm; "
+        f"All {count} original {wording.lesion_sites_label} sites remain represented.",
+        f"{count}-site descriptive diameter sum {baseline} → {response} mm; "
         "not a formal RECIST calculation.",
-        "CT reports partial response; S1-IVC 3 mm, S4a-MHV 2 mm and a stable "
-        "5 mm lung nodule require explicit review.",
+        *wording.lesion_notes,
     ]
     return comparison, observations
 
@@ -189,7 +192,9 @@ def _tool_result(state: RunState, tool: str) -> ToolResult:
     context = deepcopy(definition.contexts[state.role])
     summary = f"Reviewed the supplied {definition.labels[state.role].lower()} record."
     if state.role == Role.RADIOLOGY:
-        if derived := _lesion_comparison(deepcopy(definition.case.get("lesion_mapping"))):
+        if derived := _lesion_comparison(
+            deepcopy(definition.case.get("lesion_mapping")), runtime
+        ):
             context["derived_comparison"], extra = derived
             observations.extend(extra)
         if reviewed:

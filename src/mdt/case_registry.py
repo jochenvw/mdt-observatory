@@ -18,6 +18,9 @@ from mdt.scenario import (
     FRICTIONS,
     HYPOTHESIS,
     IMAGING_REVIEW_TERMS,
+    LESION_METHOD,
+    LESION_NOTES,
+    LESION_SITES_LABEL,
     MEMORIES,
     OBSERVATIONS,
     PROPOSAL,
@@ -62,6 +65,14 @@ class CaseRuntime(Contract):
     # Claims every applicability role publishes in addition to those drawn from the
     # records its own tools returned.
     applicability_claims: list[Claim] = []
+    # Descriptive lesion comparison wording; the site count is always derived from
+    # the mapping. Case-specific findings belong in lesion_notes, never in code.
+    lesion_sites_label: str = "mapped"
+    lesion_method: str = (
+        "Descriptive sum of mapped longest diameters, NOT a formal RECIST target set "
+        "or measured volumetry."
+    )
+    lesion_notes: list[str] = []
 
     @model_validator(mode="after")
     def complete_roles(self) -> Self:
@@ -132,6 +143,9 @@ def _catalog() -> dict[str, CaseDefinition]:
         proposal=ProposalDefinition(**PROPOSAL),
         compact_context=False,
         applicability_claims=[Claim(**item) for item in APPLICABILITY_CLAIMS],
+        lesion_sites_label=LESION_SITES_LABEL,
+        lesion_method=LESION_METHOD,
+        lesion_notes=LESION_NOTES,
     )
     definitions = {
         str(CASE["id"]): CaseDefinition(
