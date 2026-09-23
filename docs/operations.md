@@ -256,8 +256,12 @@ SameSite=Strict attributes and an authenticated read. Without it, that part is
 explicitly skipped. Verification never changes a meeting.
 
 Management-plane metadata proves configuration, not data-plane connectivity.
-`/readyz` lists the Blob container through managed identity, exercising storage,
-RBAC and DNS; `/healthz` does not access the database. The cloud acceptance below
+`/readyz` requests one single-item page of the Blob meeting listing through
+managed identity, exercising storage, RBAC and DNS at a fixed cost regardless of
+retention, and returns 503 when that call fails. It runs on the storage worker
+thread, so a slow response never stalls `/healthz`, which does not access the
+database. The retention count is listed once per process and then tracked as
+this single writer creates meetings. The cloud acceptance below
 has passed. Future releases must still verify actual Blob readiness and the
 application workflow; repeat private DNS checks inside the environment when
 networking changes. The workstation is not inside the VNet and should not gain

@@ -13,6 +13,7 @@ class Persistence(Protocol):
     def get(self, meeting_id: str) -> Meeting | None: ...
     def latest(self) -> Meeting | None: ...
     def count(self) -> int: ...
+    def ready(self) -> None: ...
     def memories(
         self, seeds: list[Memory], clinician_id: str = "demo-clinician"
     ) -> list[Memory]: ...
@@ -89,6 +90,9 @@ class Store:
 
     def count(self) -> int:
         return int(self.connection.execute("SELECT COUNT(*) FROM meetings").fetchone()[0])
+
+    def ready(self) -> None:
+        self.connection.execute("SELECT 1").fetchone()
 
     def close(self) -> None:
         self.connection.close()

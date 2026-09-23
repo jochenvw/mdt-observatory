@@ -350,3 +350,20 @@ def test_an_uncleared_room_still_survives_a_restart(tmp_path: Path) -> None:
         room = room_view(restarted)
         assert room is not None
         assert room["id"] == meeting_id
+
+def test_readiness_is_unavailable_when_storage_fails(tmp_path: Path) -> None:
+    from mdt.agents import analyze
+    from mdt.engine import Engine
+    from mdt.store import Store
+
+    class Unready(Store):
+        def ready(self) -> None:
+            raise OSError("Simulated storage outage")
+
+    settings = Settings(db_path=str(tmp_path / "unready.db"), step_delay=0)
+    engine = Engine(Unready(settings.db_path), settings, analyze)
+    with TestClient(create_app(settings, engine=engine)) as client:
+        assert client.get("/healthz").status_code == 200
+        response = client.get("/readyz")
+        assert response.status_code == 503
+        assert "Simulated" not in response.text

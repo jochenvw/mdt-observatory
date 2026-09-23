@@ -218,7 +218,10 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
 
     @application.get("/readyz")
     async def ready(service: EngineDep) -> dict[str, str]:
-        await service.ready()
+        try:
+            await service.ready()
+        except Exception as exc:
+            raise HTTPException(503, "Persistent storage is not ready.") from exc
         return {"status": "ready"}
 
     @application.get("/api/config")

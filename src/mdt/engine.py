@@ -110,7 +110,7 @@ class Engine:
             return self.room_snapshot()
 
     async def ready(self) -> None:
-        await self._io(self.store.count)
+        await self._io(self.store.ready)
 
     def _append(self, kind: str, payload: dict[str, Any] | None, role: Role | None) -> None:
         assert self.meeting
