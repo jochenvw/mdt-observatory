@@ -151,6 +151,9 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
             application.state.engine = engine
         yield
         await application.state.engine.close()
+        from mdt.agents import aclose_azure_clients
+
+        await aclose_azure_clients()
 
     application = FastAPI(
         title="MDT Observatory",

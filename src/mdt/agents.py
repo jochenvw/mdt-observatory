@@ -692,12 +692,10 @@ async def _azure_request[T: Response](
     request: Callable[[], Awaitable[T]],
     emit: Emit,
     *,
-    interval_seconds: float | None = None,
+    interval_seconds: float,
 ) -> T:
     loop = asyncio.get_running_loop()
-    interval = (
-        Settings().azure_request_interval_seconds if interval_seconds is None else interval_seconds
-    )
+    interval = interval_seconds
     rate_retries = 0
     transport_retries = 0
     while True:
@@ -787,139 +785,170 @@ def _azure_target() -> tuple[str, str]:
     return endpoint, deployment
 
 
-async def _azure_client(endpoint: str, stack: AsyncExitStack) -> AsyncOpenAI:
-    """Build a client bound to managed identity unless an explicit key is configured."""
+@dataclass
+class _AzureClient:
+    """One client per loop, so token caching and connection reuse span every role."""
+
+    identity: tuple[str, str]
+    client: AsyncOpenAI
+    resources: AsyncExitStack
+
+
+_AZURE_CLIENTS: WeakKeyDictionary[asyncio.AbstractEventLoop, _AzureClient] = (
+    WeakKeyDictionary()
+)
+
+
+async def _azure_client(endpoint: str) -> AsyncOpenAI:
+    """Client bound to managed identity unless an explicit key is configured."""
+    loop = asyncio.get_running_loop()
+    configured_key = os.getenv("AZURE_OPENAI_API_KEY", "").strip()
+    identity = (endpoint, configured_key)
+    current = _AZURE_CLIENTS.get(loop)
+    if current is not None and current.identity == identity:
+        return current.client
+    # Built without awaiting, so concurrent roles cannot create duplicate clients.
+    resources = AsyncExitStack()
     api_key: str | Callable[[], Awaitable[str]]
-    if configured_key := os.getenv("AZURE_OPENAI_API_KEY", "").strip():
+    if configured_key:
         api_key = configured_key
     else:
-        credential = stack.enter_context(DefaultAzureCredential())
+        credential = resources.enter_context(DefaultAzureCredential())
         provider = get_bearer_token_provider(credential, "https://ai.azure.com/.default")
 
         async def token_provider() -> str:
             return await asyncio.to_thread(provider)
 
         api_key = token_provider
-    return await stack.enter_async_context(
-        AsyncOpenAI(
-            base_url=endpoint + "/openai/v1/",
-            api_key=api_key,
-            timeout=httpx2.Timeout(90.0, connect=10.0, write=30.0, pool=10.0),
-            max_retries=0,
-        )
+    client = AsyncOpenAI(
+        base_url=endpoint + "/openai/v1/",
+        api_key=api_key,
+        timeout=httpx2.Timeout(90.0, connect=10.0, write=30.0, pool=10.0),
+        max_retries=0,
     )
+    resources.push_async_exit(client)
+    _AZURE_CLIENTS[loop] = _AzureClient(identity, client, resources)
+    if current is not None:
+        await current.resources.aclose()
+    return client
+
+
+async def aclose_azure_clients() -> None:
+    """Close this loop's model client and credential; call once at shutdown."""
+    current = _AZURE_CLIENTS.pop(asyncio.get_running_loop(), None)
+    if current is not None:
+        await current.resources.aclose()
 
 
 async def _azure_position(state: RunState, emit: Emit) -> Position:
     endpoint, deployment = _azure_target()
     messages = _messages(state)
     tools = _tools(state.role)
-    async with AsyncExitStack() as stack:
-        client = await _azure_client(endpoint, stack)
-        tool_call_ids: set[str] = set()
-        for _ in range(MAX_MODEL_STEPS - 1):
-            _reserve_call(state, messages, tools)
-            with TRACER.start_as_current_span(
-                "mdt.model.tools", record_exception=False, set_status_on_exception=False
-            ) as span:
-                span.set_attribute("mdt.role", state.role.value)
-                completion = await _azure_request(
-                    lambda: client.responses.create(
-                        model=deployment,
-                        input=messages,
-                        tools=tools,
-                        tool_choice="required" if not state.results else "auto",
-                        parallel_tool_calls=False,
-                        reasoning={"effort": "low"},
-                        include=["reasoning.encrypted_content"],
-                        store=False,
-                        max_output_tokens=MAX_OUTPUT_TOKENS,
-                    ),
-                    emit,
-                    interval_seconds=state.settings.azure_request_interval_seconds,
-                )
-                usage = _record_usage(state, completion, deployment)
-                await emit(
-                    "ObservationAdded",
-                    _model_event(usage, f"Azure model {deployment} completed tool selection."),
-                )
-            _validate_response(completion)
-            calls = [item for item in completion.output if item.type == "function_call"]
-            if not calls:
-                if not state.results:
-                    raise AgentRuntimeError("Azure did not execute the required role tool.")
-                break
-            if len(state.results) + len(calls) > MAX_TOOL_CALLS:
-                raise AgentRuntimeError("Azure requested more tools than the hard budget permits.")
-            messages.extend(
-                cast(ResponseInputItemParam, item.model_dump(exclude_none=True))
-                for item in completion.output
-            )
-            for call in calls:
-                if not call.call_id or call.call_id in tool_call_ids:
-                    raise AgentRuntimeError("Invalid or duplicate function-call identity.")
-                tool_call_ids.add(call.call_id)
-                result = await _execute_tool(state, call.name, call.arguments, emit)
-                output = _tool_message(state, result)
-                messages.append(
-                    {
-                        "type": "function_call_output",
-                        "call_id": call.call_id,
-                        "output": json.dumps(output, ensure_ascii=False, separators=(",", ":")),
-                    }
-                )
-            if (
-                state.phase == "initial"
-                or state.role not in APPLICABILITY_ROLES
-                or any(item.conditional_applicability for item in state.results)
-            ):
-                break
-        if not state.results:
-            raise AgentRuntimeError("No role tool executed.")
-        messages.append(
-            {
-                "role": "user",
-                "content": (
-                    "Now publish the strict Position schema for the bound role and case. "
-                    "Use returned evidence IDs only and include all cited IDs in provenance. "
-                    "Keep clinical caveats and local protocol availability honest."
-                ),
-            }
-        )
-        _reserve_call(state, messages, [])
+    client = await _azure_client(endpoint)
+    tool_call_ids: set[str] = set()
+    for _ in range(MAX_MODEL_STEPS - 1):
+        _reserve_call(state, messages, tools)
         with TRACER.start_as_current_span(
-            "mdt.model.position", record_exception=False, set_status_on_exception=False
+            "mdt.model.tools", record_exception=False, set_status_on_exception=False
         ) as span:
             span.set_attribute("mdt.role", state.role.value)
-            final = await _azure_request(
-                lambda: client.responses.parse(
+            completion = await _azure_request(
+                lambda: client.responses.create(
                     model=deployment,
                     input=messages,
-                    text_format=Position,
+                    tools=tools,
+                    tool_choice="required" if not state.results else "auto",
+                    parallel_tool_calls=False,
                     reasoning={"effort": "low"},
+                    include=["reasoning.encrypted_content"],
                     store=False,
                     max_output_tokens=MAX_OUTPUT_TOKENS,
                 ),
                 emit,
                 interval_seconds=state.settings.azure_request_interval_seconds,
             )
-            usage = _record_usage(state, final, deployment)
+            usage = _record_usage(state, completion, deployment)
             await emit(
                 "ObservationAdded",
-                _model_event(usage, f"Azure model {deployment} returned a structured position."),
+                _model_event(usage, f"Azure model {deployment} completed tool selection."),
             )
-        _validate_response(final)
-        position = final.output_parsed
-        if not isinstance(position, Position):
-            raise AgentRuntimeError("Azure returned no parsed Position.")
-        for record in state.model_calls:
-            position.trace.observations.append(
-                f"ACTUAL AZURE CALL: deployment={record['deployment']}; model={record['model']}; "
-                f"request_id={record['request_id'] or 'not supplied'}; "
-                f"response_id={record['response_id']}; input_tokens={record['input_tokens']}; "
-                f"output_tokens={record['output_tokens']}; total_tokens={record['total_tokens']}."
+        _validate_response(completion)
+        calls = [item for item in completion.output if item.type == "function_call"]
+        if not calls:
+            if not state.results:
+                raise AgentRuntimeError("Azure did not execute the required role tool.")
+            break
+        if len(state.results) + len(calls) > MAX_TOOL_CALLS:
+            raise AgentRuntimeError("Azure requested more tools than the hard budget permits.")
+        messages.extend(
+            cast(ResponseInputItemParam, item.model_dump(exclude_none=True))
+            for item in completion.output
+        )
+        for call in calls:
+            if not call.call_id or call.call_id in tool_call_ids:
+                raise AgentRuntimeError("Invalid or duplicate function-call identity.")
+            tool_call_ids.add(call.call_id)
+            result = await _execute_tool(state, call.name, call.arguments, emit)
+            output = _tool_message(state, result)
+            messages.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": call.call_id,
+                    "output": json.dumps(output, ensure_ascii=False, separators=(",", ":")),
+                }
             )
-        return position
+        if (
+            state.phase == "initial"
+            or state.role not in APPLICABILITY_ROLES
+            or any(item.conditional_applicability for item in state.results)
+        ):
+            break
+    if not state.results:
+        raise AgentRuntimeError("No role tool executed.")
+    messages.append(
+        {
+            "role": "user",
+            "content": (
+                "Now publish the strict Position schema for the bound role and case. "
+                "Use returned evidence IDs only and include all cited IDs in provenance. "
+                "Keep clinical caveats and local protocol availability honest."
+            ),
+        }
+    )
+    _reserve_call(state, messages, [])
+    with TRACER.start_as_current_span(
+        "mdt.model.position", record_exception=False, set_status_on_exception=False
+    ) as span:
+        span.set_attribute("mdt.role", state.role.value)
+        final = await _azure_request(
+            lambda: client.responses.parse(
+                model=deployment,
+                input=messages,
+                text_format=Position,
+                reasoning={"effort": "low"},
+                store=False,
+                max_output_tokens=MAX_OUTPUT_TOKENS,
+            ),
+            emit,
+            interval_seconds=state.settings.azure_request_interval_seconds,
+        )
+        usage = _record_usage(state, final, deployment)
+        await emit(
+            "ObservationAdded",
+            _model_event(usage, f"Azure model {deployment} returned a structured position."),
+        )
+    _validate_response(final)
+    position = final.output_parsed
+    if not isinstance(position, Position):
+        raise AgentRuntimeError("Azure returned no parsed Position.")
+    for record in state.model_calls:
+        position.trace.observations.append(
+            f"ACTUAL AZURE CALL: deployment={record['deployment']}; model={record['model']}; "
+            f"request_id={record['request_id'] or 'not supplied'}; "
+            f"response_id={record['response_id']}; input_tokens={record['input_tokens']}; "
+            f"output_tokens={record['output_tokens']}; total_tokens={record['total_tokens']}."
+        )
+    return position
 
 
 async def _limited_azure_position(state: RunState, emit: Emit) -> Position:

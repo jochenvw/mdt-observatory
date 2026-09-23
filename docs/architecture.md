@@ -150,7 +150,10 @@ cooldowns are shared across roles. Increasing concurrency does not create more
 model quota or relax the chair's review and concurrence gates.
 
 Model requests allow 90 seconds of read inactivity, with 10-second connection
-and pool limits and a 30-second write limit. One timeout/connection retry is
+and pool limits and a 30-second write limit. All roles share one model client
+and managed-identity credential per process, so tokens and connections are reused;
+a changed endpoint or key rebuilds it, and application shutdown closes it.
+One timeout/connection retry is
 allowed per request after a two-second pause and the existing shared pacing.
 Rate-limit retries retain their separate two-retry budget and server cooldown.
 Retries stay inside the existing 300-second active-role deadline; they do not
