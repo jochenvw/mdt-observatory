@@ -54,10 +54,12 @@ class Store:
 
     def save_memory(self, memory: Memory) -> None:
         with self.connection:
-            self.connection.execute(
+            cursor = self.connection.execute(
                 "UPDATE memories SET snapshot=? WHERE id=? AND clinician_id=?",
                 (memory.model_dump_json(), memory.id, memory.clinician_id),
             )
+            if cursor.rowcount != 1:
+                raise ValueError("Cannot update a memory that has not been initialized.")
 
     def save(self, meeting: Meeting) -> None:
         with self.connection:

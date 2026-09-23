@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
@@ -15,6 +16,7 @@ from mdt.agents import analyze
 from mdt.config import Settings
 from mdt.engine import Engine
 from mdt.models import Meeting, Memory, Role
+from mdt.store import Persistence, Store
 
 ACCOUNT = "https://example.blob.core.windows.net"
 
@@ -159,6 +161,50 @@ def test_explicit_memory_and_persistent_forget(cloud: FakeContainer) -> None:
     assert restored.memories([seed])[0].status == "FORGOTTEN"
     assert restored.memories([seed])[0].text == ""
     assert restored.memories([seed], clinician_id="someone-else") == []
+    restored.close()
+
+
+def _seed() -> Memory:
+    return Memory(
+        id="preference",
+        role=Role.RADIOLOGY,
+        category="CLINICIAN_PREFERENCE",
+        text="Inspect the growth trajectory.",
+        source="Synthetic clinician note",
+        date="2026-09-16",
+    )
+
+
+def _open(backend: str, tmp_path: Path) -> Persistence:
+    if backend == "blob":
+        return blob_store.BlobStore(ACCOUNT, "mdt-state")
+    return Store(str(tmp_path / "contract.db"))
+
+
+@pytest.mark.parametrize("backend", ["sqlite", "blob"])
+def test_save_memory_rejects_uninitialized_memory(
+    backend: str, cloud: FakeContainer, tmp_path: Path
+) -> None:
+    store = _open(backend, tmp_path)
+    with pytest.raises(ValueError, match="not been initialized"):
+        store.save_memory(_seed())
+    store.close()
+
+
+@pytest.mark.parametrize("backend", ["sqlite", "blob"])
+def test_forget_persists_across_reload(
+    backend: str, cloud: FakeContainer, tmp_path: Path
+) -> None:
+    store = _open(backend, tmp_path)
+    memory = store.memories([_seed()])[0]
+    memory.status = "FORGOTTEN"
+    memory.text = ""
+    memory.source = ""
+    store.save_memory(memory)
+    store.close()
+    restored = _open(backend, tmp_path)
+    reloaded = restored.memories([_seed()])[0]
+    assert (reloaded.status, reloaded.text, reloaded.source) == ("FORGOTTEN", "", "")
     restored.close()
 
 
