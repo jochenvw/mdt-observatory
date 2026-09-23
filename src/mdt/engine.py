@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from uuid import uuid4
 
@@ -43,6 +44,9 @@ class Engine:
         self.settings = settings
         self.analyzer = analyzer
         self.lock = asyncio.Lock()
+        # One worker keeps storage calls off the event loop, serializes access to
+        # the single SQLite connection and preserves write order.
+        self._io_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mdt-store")
         self.meeting = store.latest()
         self.tasks: set[asyncio.Task[None]] = set()
         self.subscribers: dict[str, set[asyncio.Queue[str]]] = {}
@@ -59,7 +63,13 @@ class Engine:
                 if role.status in {"ANALYZING", "REASSESSING"}:
                     role.status = "ERROR"
                     role.error = "Analysis interrupted by server restart."
-            self._event("AnalysisInterrupted", {"summary": self.meeting.error})
+            # Runs before the app serves requests, so a direct write is safe here.
+            self._append("AnalysisInterrupted", {"summary": self.meeting.error}, None)
+            meeting = self.meeting
+            store.save_snapshot(meeting.id, meeting.created_at, meeting.model_dump_json())
+
+    async def _io[T](self, fn: Callable[..., T], *args: Any) -> T:
+        return await asyncio.get_running_loop().run_in_executor(self._io_pool, fn, *args)
 
     def _current(self, meeting_id: str) -> Meeting:
         if self.cleared or not self.meeting or self.meeting.id != meeting_id:
@@ -72,6 +82,7 @@ class Engine:
         return None if self.cleared else self.meeting
 
     def get(self, meeting_id: str) -> Meeting:
+        """Synchronous lookup for scripts and tests; request handlers use `load`."""
         if self.meeting and self.meeting.id == meeting_id:
             return self.meeting
         found = self.store.get(meeting_id)
@@ -79,23 +90,52 @@ class Engine:
             raise NotFound("Meeting not found.")
         return found
 
-    def _event(
-        self, kind: str, payload: dict[str, Any] | None = None, role: Role | None = None
-    ) -> None:
+    async def load(self, meeting_id: str) -> Meeting:
+        """Meeting as of the last completed transition; transitions await storage."""
+        async with self.lock:
+            if self.meeting and self.meeting.id == meeting_id:
+                return self.meeting.model_copy(deep=True)
+        found = await self._io(self.store.get, meeting_id)
+        if not found:
+            raise NotFound("Meeting not found.")
+        return found
+
+    async def current(self) -> Meeting | None:
+        async with self.lock:
+            meeting = self.active
+            return meeting.model_copy(deep=True) if meeting else None
+
+    async def room_state(self) -> str:
+        async with self.lock:
+            return self.room_snapshot()
+
+    async def ready(self) -> None:
+        await self._io(self.store.count)
+
+    def _append(self, kind: str, payload: dict[str, Any] | None, role: Role | None) -> None:
         assert self.meeting
         if self.persistence_failed:
             raise PersistenceFailure("Persistent storage is unavailable; the meeting is paused.")
-        meeting = self.meeting
-        event = Event(
-            id=len(meeting.events) + 1,
-            meeting_id=meeting.id,
-            type=kind,
-            role=role,
-            payload=payload or {},
+        self.meeting.events.append(
+            Event(
+                id=len(self.meeting.events) + 1,
+                meeting_id=self.meeting.id,
+                type=kind,
+                role=role,
+                payload=payload or {},
+            )
         )
-        meeting.events.append(event)
+
+    async def _event(
+        self, kind: str, payload: dict[str, Any] | None = None, role: Role | None = None
+    ) -> None:
+        self._append(kind, payload, role)
+        assert self.meeting
+        meeting = self.meeting
+        # Serialize once on the loop: the same bytes are persisted and then broadcast.
+        snapshot = meeting.model_dump_json()
         try:
-            self.store.save(meeting)
+            await self._io(self.store.save_snapshot, meeting.id, meeting.created_at, snapshot)
         except Exception as exc:
             meeting.events.pop()
             self.persistence_failed = True
@@ -107,18 +147,19 @@ class Engine:
             self._broadcast()
             log.error("Persistence failed event=%s error_type=%s", kind, type(exc).__name__)
             raise PersistenceFailure(meeting.error) from exc
-        self._broadcast()
+        self._broadcast(snapshot)
         event_counter.add(1, {"event.type": kind, "mdt.mode": meeting.mode})
         log.info("mdt.event type=%s meeting=%s role=%s", kind, meeting.id, role or "chair")
 
-    def _broadcast(self) -> None:
+    def _broadcast(self, snapshot: str | None = None) -> None:
         assert self.meeting
-        snapshot = self.meeting.model_dump_json()
+        if snapshot is None:
+            snapshot = self.meeting.model_dump_json()
         for queue in self.subscribers.get(self.meeting.id, set()):
             if queue.full():
                 queue.get_nowait()
             queue.put_nowait(snapshot)
-        self._broadcast_room()
+        self._broadcast_room(None if self.cleared else snapshot)
 
     def room_snapshot(self) -> str:
         """Envelope describing the room every participant screen follows.
@@ -130,8 +171,8 @@ class Engine:
         body = "null" if meeting is None else meeting.model_dump_json()
         return f'{{"meeting":{body}}}'
 
-    def _broadcast_room(self) -> None:
-        snapshot = self.room_snapshot()
+    def _broadcast_room(self, meeting_snapshot: str | None) -> None:
+        snapshot = f'{{"meeting":{meeting_snapshot or "null"}}}'
         for queue in self.room_subscribers:
             if queue.full():
                 queue.get_nowait()
@@ -151,18 +192,18 @@ class Engine:
                 self.cleared = True
                 # Recording the event both persists the reset across a restart and
                 # broadcasts standby to every open screen.
-                self._event("RoomCleared", {
+                await self._event("RoomCleared", {
                     "summary": "The meeting was closed on the shared screens. "
                     "The record stays available for review and export.",
                 })
                 return
             self.cleared = True
-            self._broadcast_room()
+            self._broadcast_room(None)
 
-    def _phase(self, phase: Phase) -> None:
+    async def _phase(self, phase: Phase) -> None:
         assert self.meeting
         self.meeting.phase = phase
-        self._event("PhaseChanged", {"phase": phase.value})
+        await self._event("PhaseChanged", {"phase": phase.value})
 
     def _spawn(self, roles: list[Role], phase: str) -> None:
         task = asyncio.create_task(self._run_roles(roles, phase))
@@ -196,10 +237,11 @@ class Engine:
                 raise PersistenceFailure("Recover the interrupted meeting before starting another.")
             if mode not in {"rehearsal", "azure"}:
                 raise Conflict("Unknown runtime mode.")
-            if self.store.count() >= self.settings.max_meetings:
+            if await self._io(self.store.count) >= self.settings.max_meetings:
                 raise Conflict("Demo meeting retention limit reached. Archive the database first.")
             definition = get_case(case_id)
             memory_ids = {item.id for item in definition.memories}
+            stored_memories = await self._io(self.store.memories, definition.memories)
             self.cleared = False
             self.meeting = Meeting(
                 id=str(uuid4()),
@@ -213,15 +255,12 @@ class Engine:
                     for role in Role
                 },
                 evidence=definition.evidence,
-                memories=[
-                    item for item in self.store.memories(definition.memories)
-                    if item.id in memory_ids
-                ],
+                memories=[item for item in stored_memories if item.id in memory_ids],
                 busy=True,
                 round=1,
             )
-            self._phase(Phase.CASE_LOADING)
-            self._event(
+            await self._phase(Phase.CASE_LOADING)
+            await self._event(
                 "CaseActivated", {"case_id": definition.case["id"], "demonstration": True},
             )
             self._spawn(list(Role), "initial")
@@ -233,7 +272,7 @@ class Engine:
             state = self.meeting.roles[role]
             state.status = "ANALYZING" if phase == "initial" else "REASSESSING"
             state.error = None
-            self._event("RoleAnalysisStarted", {"round": self.meeting.round}, role)
+            await self._event("RoleAnalysisStarted", {"round": self.meeting.round}, role)
             case_id = str(self.meeting.case["id"])
             guidance = list(state.guidance)
             mode = self.meeting.mode
@@ -241,6 +280,7 @@ class Engine:
         async def emit(kind: str, payload: dict[str, Any]) -> None:
             async with self.lock:
                 assert self.meeting
+                payload = self._reference_known_evidence(payload)
                 current = self.meeting.roles[role]
                 current.activity.append({"type": kind, "timestamp": utcnow(), **payload})
                 current.activity = current.activity[-80:]
@@ -254,7 +294,7 @@ class Engine:
                     current.trace.next_action = summary
                     if kind == "ObservationAdded":
                         current.trace.observations.append(summary)
-                self._event(kind, payload, role)
+                await self._event(kind, payload, role)
             await asyncio.sleep(self.settings.step_delay)
 
         try:
@@ -285,7 +325,7 @@ class Engine:
                 current.trace = position.trace
                 current.revision += 1
                 current.status = "PUBLISHED"
-                self._event(
+                await self._event(
                     "PositionPublished" if phase == "initial" else "PositionUpdated",
                     {"revision": current.revision, "autonomy": position.autonomy},
                     role,
@@ -295,6 +335,24 @@ class Engine:
         except Exception as exc:
             # Provider SDK errors vary; every failure becomes a persisted, visible failed role.
             await self._role_error(role, exc)
+
+    def _reference_known_evidence(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Store an evidence id instead of a copy the meeting already holds.
+
+        Every event persists the whole meeting, so repeating full evidence records in
+        events and activity multiplies bytes written. Records that differ from the
+        meeting's copy are kept in full so the audit trail never loses content.
+        """
+        assert self.meeting
+        evidence = payload.get("evidence")
+        if not isinstance(evidence, dict):
+            return payload
+        record = next((e for e in self.meeting.evidence if e.id == evidence.get("id")), None)
+        if record is None or record.model_dump(mode="json") != evidence:
+            return payload
+        slim = {key: value for key, value in payload.items() if key != "evidence"}
+        slim["evidence_id"] = record.id
+        return slim
 
     async def _role_error(self, role: Role, exc: Exception) -> None:
         cause: BaseException | None = exc
@@ -328,12 +386,14 @@ class Engine:
                 f"{type(exc).__name__}: analysis failed. Check model configuration, "
                 "permissions, quota and server diagnostics, then retry.",
             )
-            self._event("RoleAnalysisFailed", {"summary": state.error}, role)
+            await self._event("RoleAnalysisFailed", {"summary": state.error}, role)
 
     async def _run_roles(self, roles: list[Role], phase: str) -> None:
         try:
             async with self.lock:
-                self._phase(Phase.INITIAL_ANALYSIS if phase == "initial" else Phase.POSITION_UPDATE)
+                await self._phase(
+                    Phase.INITIAL_ANALYSIS if phase == "initial" else Phase.POSITION_UPDATE
+                )
             async with asyncio.TaskGroup() as group:
                 for role in roles:
                     group.create_task(self._analyze_one(role, phase))
@@ -342,11 +402,11 @@ class Engine:
                 self.meeting.busy = False
                 if any(state.status == "ERROR" for state in self.meeting.roles.values()):
                     self.meeting.error = "One or more specialists failed. No consensus is possible."
-                    self._phase(Phase.ERROR)
+                    await self._phase(Phase.ERROR)
                     return
                 self.meeting.error = None
-                self._phase(Phase.POSITION_COLLECTION)
-                self._reconcile(roles if phase == "followup" else [])
+                await self._phase(Phase.POSITION_COLLECTION)
+                await self._reconcile(roles if phase == "followup" else [])
         except asyncio.CancelledError:
             async with self.lock:
                 assert self.meeting
@@ -356,7 +416,7 @@ class Engine:
                     self.meeting.phase = Phase.ERROR
                     self._broadcast()
                 else:
-                    self._phase(Phase.ERROR)
+                    await self._phase(Phase.ERROR)
             raise
         except Exception as exc:
             log.error("Round aborted error_type=%s", type(exc).__name__)
@@ -369,21 +429,21 @@ class Engine:
                 )
                 self._broadcast()
 
-    def _invalidate(self, reason: str) -> None:
+    async def _invalidate(self, reason: str) -> None:
         assert self.meeting
         if self.meeting.plan:
             self.meeting.concurrences.clear()
-            self._event("ConcurrenceInvalidated", {"summary": reason})
+            await self._event("ConcurrenceInvalidated", {"summary": reason})
 
-    def _reconcile(self, reassessed: list[Role]) -> None:
+    async def _reconcile(self, reassessed: list[Role]) -> None:
         assert self.meeting
         meeting = self.meeting
-        self._phase(Phase.FRICTION_ANALYSIS)
+        await self._phase(Phase.FRICTION_ANALYSIS)
         keys: dict[str, list[Role]] = {}
         for state in meeting.roles.values():
             if state.position is None:
                 meeting.error = "A specialist has no position; retry before proposing a plan."
-                self._phase(Phase.ERROR)
+                await self._phase(Phase.ERROR)
                 return
             for key in state.position.friction_keys:
                 keys.setdefault(key, []).append(state.role)
@@ -398,14 +458,14 @@ class Engine:
                     friction.resolution = (
                         "Specialist reassessed the objection. Fresh human concurrence is required."
                     )
-                    self._event("FrictionResolved", {"friction_id": friction.id})
+                    await self._event("FrictionResolved", {"friction_id": friction.id})
             elif friction.id not in keys and not friction.resolved:
                 friction.resolved = True
                 friction.resolution = (
                     "Updated specialist position addresses the question; residual uncertainty "
                     "is retained in the conditional proposal."
                 )
-                self._event("FrictionResolved", {"friction_id": friction.id})
+                await self._event("FrictionResolved", {"friction_id": friction.id})
         for key, roles in keys.items():
             existing = next((f for f in meeting.frictions if f.id == key), None)
             if existing:
@@ -417,16 +477,18 @@ class Engine:
                 meeting.frictions.append(
                     Friction(id=key, question=question, roles=roles, missing=missing)
                 )
-                self._event("FrictionDetected", {"friction_id": key, "question": question})
+                await self._event(
+                    "FrictionDetected", {"friction_id": key, "question": question}
+                )
         if any(f.blocking and not f.resolved for f in meeting.frictions):
-            self._phase(Phase.TARGETED_DISCUSSION)
+            await self._phase(Phase.TARGETED_DISCUSSION)
         else:
-            self._propose()
+            await self._propose()
 
-    def _propose(self) -> None:
+    async def _propose(self) -> None:
         assert self.meeting
         meeting = self.meeting
-        self._phase(Phase.PLAN_PROPOSAL)
+        await self._phase(Phase.PLAN_PROPOSAL)
         positions = [state.position for state in meeting.roles.values() if state.position]
         runtime = get_case(str(meeting.case["id"])).runtime
         conditions = list(dict.fromkeys(u for p in positions for u in p.uncertainties))
@@ -448,8 +510,8 @@ class Engine:
             ),
         )
         meeting.concurrences.clear()
-        self._event("PlanProposed", {"version": meeting.plan.version})
-        self._phase(Phase.CONCURRENCE)
+        await self._event("PlanProposed", {"version": meeting.plan.version})
+        await self._phase(Phase.CONCURRENCE)
         objecting_roles = {obj["role"] for obj in meeting.objections}
         for position in positions:
             if position.autonomy == "AUTO" and position.role not in objecting_roles:
@@ -459,8 +521,8 @@ class Engine:
                     actor="agent",
                     comment="Automatic concurrence under demonstration policy.",
                 )
-                self._event("ConcurrenceGiven", {"actor": "agent"}, position.role)
-        self._maybe_close()
+                await self._event("ConcurrenceGiven", {"actor": "agent"}, position.role)
+        await self._maybe_close()
 
     async def steer(self, meeting_id: str, role: Role, guidance: str) -> Meeting:
         async with self.lock:
@@ -470,12 +532,12 @@ class Engine:
             state = meeting.roles[role]
             if len(state.guidance) >= 20:
                 raise Conflict("Guidance limit reached for this demonstration role.")
-            self._invalidate("Human guidance changed a specialist position.")
+            await self._invalidate("Human guidance changed a specialist position.")
             state.guidance.append(guidance.strip())
             meeting.busy = True
             meeting.round += 1
-            self._event("HumanGuidanceReceived", {"summary": guidance.strip()}, role)
-            self._phase(Phase.TARGETED_DISCUSSION)
+            await self._event("HumanGuidanceReceived", {"summary": guidance.strip()}, role)
+            await self._phase(Phase.TARGETED_DISCUSSION)
             self._spawn([role], "followup")
             return meeting.model_copy(deep=True)
 
@@ -496,10 +558,10 @@ class Engine:
                 raise Conflict("There are no roles requiring follow-up.")
             if meeting.round >= 12:
                 raise Conflict("Round budget reached. Start a new meeting.")
-            self._invalidate("Targeted evidence review is updating positions.")
+            await self._invalidate("Targeted evidence review is updating positions.")
             meeting.round += 1
             meeting.busy = True
-            self._event("EvidenceRequested", {"roles": [role.value for role in roles]})
+            await self._event("EvidenceRequested", {"roles": [role.value for role in roles]})
             self._spawn(roles, "followup")
             return meeting.model_copy(deep=True)
 
@@ -519,11 +581,11 @@ class Engine:
                 if objection["role"] == role and not objection.get("addressed_at"):
                     objection["addressed_at"] = utcnow()
                     objection["accepted_plan_version"] = meeting.plan.version
-            self._event("ConcurrenceGiven", {"actor": "human", "comment": comment}, role)
-            self._maybe_close()
+            await self._event("ConcurrenceGiven", {"actor": "human", "comment": comment}, role)
+            await self._maybe_close()
             return meeting.model_copy(deep=True)
 
-    def _maybe_close(self) -> None:
+    async def _maybe_close(self) -> None:
         assert self.meeting
         meeting = self.meeting
         if not meeting.plan or meeting.busy:
@@ -537,8 +599,8 @@ class Engine:
         ):
             return
         meeting.closed_at = utcnow()
-        self._phase(Phase.DECISION_CAPTURED)
-        self._event("CaseClosed", {"version": meeting.plan.version})
+        await self._phase(Phase.DECISION_CAPTURED)
+        await self._event("CaseClosed", {"version": meeting.plan.version})
 
     async def object(
         self, meeting_id: str, role: Role, comment: str, plan_version: int | None = None
@@ -568,9 +630,9 @@ class Engine:
                     missing=["Reassessment and human concurrence"],
                 )
             )
-            self._invalidate("A participant objected to the proposed plan.")
-            self._event("ObjectionRaised", {"comment": comment.strip()}, role)
-            self._phase(Phase.TARGETED_DISCUSSION)
+            await self._invalidate("A participant objected to the proposed plan.")
+            await self._event("ObjectionRaised", {"comment": comment.strip()}, role)
+            await self._phase(Phase.TARGETED_DISCUSSION)
             return meeting.model_copy(deep=True)
 
     async def memory(self, meeting_id: str, memory_id: str, action: str) -> Meeting:
@@ -591,7 +653,7 @@ class Engine:
                 memory.text = ""
                 memory.source = ""
             try:
-                self.store.save_memory(memory)
+                await self._io(self.store.save_memory, memory)
             except Exception as exc:
                 log.error("Memory persistence failed error_type=%s", type(exc).__name__)
                 self.persistence_failed = True
@@ -601,14 +663,16 @@ class Engine:
                 )
                 self._broadcast()
                 raise PersistenceFailure(meeting.error) from exc
-            self._event("MemoryAction", {"memory_id": memory_id, "action": action}, memory.role)
+            await self._event(
+                "MemoryAction", {"memory_id": memory_id, "action": action}, memory.role
+            )
             if action == "use":
                 note = f"Explicit memory nudge ({memory.category}, not medical fact): {memory.text}"
-                self._invalidate("A clinician explicitly applied a memory nudge.")
+                await self._invalidate("A clinician explicitly applied a memory nudge.")
                 meeting.roles[memory.role].guidance.append(note)
                 meeting.round += 1
                 meeting.busy = True
-                self._event("HumanGuidanceReceived", {"summary": note}, memory.role)
+                await self._event("HumanGuidanceReceived", {"summary": note}, memory.role)
                 self._spawn([memory.role], "followup")
             return meeting.model_copy(deep=True)
 
@@ -619,7 +683,7 @@ class Engine:
                 raise Conflict("There is no failed round to retry.")
             if self.persistence_failed:
                 try:
-                    restored = self.store.get(meeting_id)
+                    restored = await self._io(self.store.get, meeting_id)
                 except Exception as exc:
                     log.error("Persistence recovery failed error_type=%s", type(exc).__name__)
                     raise PersistenceFailure("Persistent storage is still unavailable.") from exc
@@ -642,7 +706,7 @@ class Engine:
                 roles = list(Role)
             meeting.busy = True
             meeting.error = None
-            self._event("AnalysisRetried", {"roles": [role.value for role in roles]})
+            await self._event("AnalysisRetried", {"roles": [role.value for role in roles]})
             self._spawn(roles, "initial" if meeting.round == 1 else "followup")
             return meeting.model_copy(deep=True)
 
@@ -652,4 +716,6 @@ class Engine:
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+        # Let queued writes finish before closing the connection they use.
+        self._io_pool.shutdown(wait=True)
         self.store.close()

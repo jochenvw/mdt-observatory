@@ -218,7 +218,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
 
     @application.get("/readyz")
     async def ready(service: EngineDep) -> dict[str, str]:
-        service.store.count()
+        await service.ready()
         return {"status": "ready"}
 
     @application.get("/api/config")
@@ -265,7 +265,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
 
     @application.get("/api/meeting", dependencies=protected)
     async def latest(service: EngineDep) -> Meeting | None:
-        return service.active
+        return await service.current()
 
     @application.get("/api/room/stream", dependencies=protected)
     async def room_stream(service: EngineDep, request: Request) -> StreamingResponse:
@@ -275,8 +275,9 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
         previous case, both receive the current room state here; no manual reload.
         """
         queue: asyncio.Queue[str] = asyncio.Queue(maxsize=2)
+        initial_room = await service.room_state()
         service.room_subscribers.add(queue)
-        queue.put_nowait(service.room_snapshot())
+        queue.put_nowait(initial_room)
         return snapshot_stream(
             request, queue, "room", config.presenter_token, lambda: _discard_room(service, queue)
         )
@@ -311,11 +312,11 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
 
     @application.get("/api/meetings/{meeting_id}", dependencies=protected)
     async def meeting(meeting_id: str, service: EngineDep) -> Meeting:
-        return service.get(meeting_id)
+        return await service.load(meeting_id)
 
     @application.get("/api/meetings/{meeting_id}/stream", dependencies=protected)
     async def stream(meeting_id: str, service: EngineDep, request: Request) -> StreamingResponse:
-        initial = service.get(meeting_id)
+        initial = await service.load(meeting_id)
         queue: asyncio.Queue[str] = asyncio.Queue(maxsize=2)
         service.subscribers.setdefault(meeting_id, set()).add(queue)
         queue.put_nowait(initial.model_dump_json())
@@ -353,7 +354,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
 
     @application.get("/api/meetings/{meeting_id}/export", dependencies=protected)
     async def export(meeting_id: str, service: EngineDep) -> Response:
-        result = service.get(meeting_id)
+        result = await service.load(meeting_id)
         return Response(
             result.model_dump_json(indent=2),
             media_type="application/json",

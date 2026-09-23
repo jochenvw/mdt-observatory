@@ -1,4 +1,5 @@
 import asyncio
+import time
 from pathlib import Path
 from typing import Any
 
@@ -489,10 +490,10 @@ async def test_storage_failure_stops_round_and_reloads_before_retry(tmp_path: Pa
     class FailingStore(Store):
         fail = False
 
-        def save(self, meeting: Any) -> None:
+        def save_snapshot(self, meeting_id: str, created_at: str, payload: str) -> None:
             if self.fail:
                 raise OSError("Simulated storage outage")
-            super().save(meeting)
+            super().save_snapshot(meeting_id, created_at, payload)
 
     settings = Settings(db_path=str(tmp_path / "failure.db"), step_delay=0)
     store = FailingStore(settings.db_path)
@@ -509,4 +510,120 @@ async def test_storage_failure_stops_round_and_reloads_before_retry(tmp_path: Pa
     await settled(engine)
     assert engine.get(meeting.id).phase == Phase.TARGETED_DISCUSSION
     assert not engine.persistence_failed
+    await engine.close()
+
+
+class SlowStore(Store):
+    """SQLite store whose snapshot writes block like a slow Blob upload."""
+
+    delay = 0.0
+    writes = 0
+    written = 0
+
+    def save_snapshot(self, meeting_id: str, created_at: str, payload: str) -> None:
+        time.sleep(self.delay)
+        self.writes += 1
+        self.written += len(payload)
+        super().save_snapshot(meeting_id, created_at, payload)
+
+
+def slow_engine(tmp_path: Path, delay: float = 0.0) -> tuple[Engine, SlowStore]:
+    settings = Settings(db_path=str(tmp_path / "slow.db"), step_delay=0)
+    store = SlowStore(settings.db_path)
+    store.delay = delay
+    return Engine(store, settings, analyze), store
+
+
+async def test_blocked_storage_write_does_not_freeze_the_event_loop(tmp_path: Path) -> None:
+    import httpx
+
+    from mdt.app import create_app
+
+    engine, store = slow_engine(tmp_path, delay=1.0)
+    application = create_app(Settings(db_path=str(tmp_path / "unused.db")), engine=engine)
+    transport = httpx.ASGITransport(app=application)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        start = asyncio.create_task(engine.start("rehearsal"))
+        await asyncio.sleep(0.1)
+        assert not start.done(), "the first write should still be blocked"
+        began = time.monotonic()
+        assert (await client.get("/healthz")).status_code == 200
+        assert time.monotonic() - began < 0.2
+        await start
+    store.delay = 0
+    await engine.close()
+
+
+async def test_persisted_events_are_numbered_in_write_order(tmp_path: Path) -> None:
+    engine, store = slow_engine(tmp_path)
+    started = await engine.start("rehearsal")
+    await settled(engine)
+    persisted = store.get(started.id)
+    assert persisted is not None
+    assert [event.id for event in persisted.events] == list(range(1, len(persisted.events) + 1))
+    assert store.writes == len(persisted.events)
+    assert persisted.model_dump() == engine.get(started.id).model_dump()
+    await engine.close()
+
+
+async def test_readers_never_see_a_half_applied_transition(tmp_path: Path) -> None:
+    engine, _ = slow_engine(tmp_path, delay=0.001)
+    await engine.start("rehearsal")
+    transitional = {Phase.POSITION_COLLECTION, Phase.FRICTION_ANALYSIS, Phase.PLAN_PROPOSAL}
+    while engine.tasks:
+        seen = await engine.current()
+        assert seen is not None
+        assert seen.busy or seen.phase not in transitional
+        await asyncio.sleep(0)
+    await engine.close()
+
+
+async def test_each_event_serializes_the_meeting_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mdt.models import Meeting
+
+    engine = make_engine(tmp_path)
+    room: asyncio.Queue[str] = asyncio.Queue(maxsize=1000)
+    engine.room_subscribers.add(room)
+    calls = 0
+    original = Meeting.model_dump_json
+
+    def counted(self: Meeting, **kwargs: Any) -> str:
+        nonlocal calls
+        calls += 1
+        return original(self, **kwargs)
+
+    monkeypatch.setattr(Meeting, "model_dump_json", counted)
+    started = await engine.start("rehearsal")
+    engine.subscribers.setdefault(started.id, set()).add(asyncio.Queue(maxsize=1000))
+    await settled(engine)
+    meeting = engine.get(started.id)
+    assert calls == len(meeting.events)
+    monkeypatch.undo()
+    last = room.get_nowait()
+    while not room.empty():
+        last = room.get_nowait()
+    assert last == f'{{"meeting":{meeting.model_dump_json()}}}' == engine.room_snapshot()
+    await engine.close()
+
+
+async def test_known_evidence_is_referenced_not_copied_into_events(tmp_path: Path) -> None:
+    engine, store = slow_engine(tmp_path)
+    started = await engine.start("rehearsal", "CASE-MDT-CRC-WT-2026-002")
+    await settled(engine)
+    meeting = engine.get(started.id)
+    known = {item.id for item in meeting.evidence}
+    found = [event.payload for event in meeting.events if event.type == "EvidenceFound"]
+    assert found and all("evidence" not in payload for payload in found)
+    assert {payload["evidence_id"] for payload in found} <= known
+    activity = [
+        a for s in meeting.roles.values() for a in s.activity if a["type"] == "EvidenceFound"
+    ]
+    assert activity and all(a["evidence_id"] in known and "evidence" not in a for a in activity)
+    changed = meeting.evidence[0].model_dump(mode="json") | {"title": "Different record"}
+    kept = engine._reference_known_evidence({"summary": "x", "evidence": changed})
+    assert kept["evidence"] == changed, "differing records stay in full for the audit trail"
+    # Regression bound: 51.1 MB before references; 37.9 MB measured after.
+    assert store.written < 40_000_000
     await engine.close()

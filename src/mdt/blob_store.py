@@ -87,11 +87,10 @@ class BlobStore:
         self.etags[name] = etag
 
     def save(self, meeting: Meeting) -> None:
-        self._write(
-            f"meetings/{meeting.id}.json",
-            meeting.model_dump_json(),
-            {"created_at": meeting.created_at},
-        )
+        self.save_snapshot(meeting.id, meeting.created_at, meeting.model_dump_json())
+
+    def save_snapshot(self, meeting_id: str, created_at: str, payload: str) -> None:
+        self._write(f"meetings/{meeting_id}.json", payload, {"created_at": created_at})
 
     def get(self, meeting_id: str) -> Meeting | None:
         payload = self._read(f"meetings/{quote(meeting_id, safe='')}.json")

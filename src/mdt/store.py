@@ -6,7 +6,10 @@ from mdt.models import Meeting, Memory
 
 
 class Persistence(Protocol):
+    """Synchronous storage contract; the engine calls it from one worker thread."""
+
     def save(self, meeting: Meeting) -> None: ...
+    def save_snapshot(self, meeting_id: str, created_at: str, payload: str) -> None: ...
     def get(self, meeting_id: str) -> Meeting | None: ...
     def latest(self) -> Meeting | None: ...
     def count(self) -> int: ...
@@ -62,11 +65,14 @@ class Store:
                 raise ValueError("Cannot update a memory that has not been initialized.")
 
     def save(self, meeting: Meeting) -> None:
+        self.save_snapshot(meeting.id, meeting.created_at, meeting.model_dump_json())
+
+    def save_snapshot(self, meeting_id: str, created_at: str, payload: str) -> None:
         with self.connection:
             self.connection.execute(
                 "INSERT INTO meetings VALUES (?, ?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET snapshot=excluded.snapshot",
-                (meeting.id, meeting.created_at, meeting.model_dump_json()),
+                (meeting_id, created_at, payload),
             )
 
     def get(self, meeting_id: str) -> Meeting | None:
