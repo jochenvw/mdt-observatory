@@ -21,6 +21,10 @@ const normalized = (value: string) => value.replace(/[^a-z0-9]/gi, '').toLowerCa
 export function recordText(value: string): string {
   return value.replace(/synthetic|syntetic/gi, 'demonstration').replace(/SYN-/gi, 'CASE-');
 }
+/** Recorded clinical prose for display, with internal pathway markers in clinician words. */
+export function outcomeText(value: string): string {
+  return recordText(value).replace(/\bPROTOCOL_NOT_PUBLIC\b/g, 'Local pathway unavailable').replace(/\bPROTOCOL_FOUND\b/g, 'Protocol available for review');
+}
 /** Preserve source clinical fields (including scanner models), without changing stored records. */
 export function recordData(value: unknown): unknown {
   if (typeof value === 'string') return recordText(value);
@@ -146,6 +150,36 @@ const MEMORY_ACTION: Record<string, [string, string]> = {
   ignore: ['Memory set aside', 'A clinician set a saved review preference aside. It will not guide this review.'],
   forget: ['Memory forgotten', 'A clinician removed a saved review preference from future consideration.'],
 };
+export const DOCUMENT_NAME: Record<string, string> = { patient: 'Patient summary', clinician: 'Colleague letter' };
+/** Why an outcome document failed, in words a reviewer can act on. Never hides the failure. */
+export function documentError(message: string | null | undefined): string {
+  const value = (message ?? '').trim();
+  if (/not configured/i.test(value)) return 'The language model that writes outcome documents is not configured on this server. Nothing was drafted, and no scripted text was substituted.';
+  if (/restart/i.test(value)) return 'The server restarted while this document was being drafted. Nothing was kept; regenerate to try again.';
+  if (/authenticat|access denied|401|403/i.test(value)) return 'The drafting service refused access. Nothing was drafted; restore access, then regenerate.';
+  if (/quota|busy|429|rate.?limit/i.test(value)) return 'The drafting service is busy. Nothing was drafted; regenerate in a moment.';
+  if (/timed out|timeout/i.test(value)) return 'Drafting did not finish in time. No scripted text was substituted; regenerate to try again.';
+  if (!value || isTechnical(value)) return 'Drafting failed. No scripted text was substituted; regenerate to try again.';
+  return recordText(value);
+}
+function communicationActivity(item: Data, type: string): ClinicalActivity | null {
+  if (!type.startsWith('communication')) return null;
+  const several = Array.isArray(item.audiences);
+  const name = several ? 'Outcome documents' : DOCUMENT_NAME[String(item.audience)] ?? 'Outcome document';
+  const note = typeof item.summary === 'string' ? item.summary.trim() : '';
+  const revision = typeof item.revision === 'number' && item.revision > 1 ? ` · revision ${item.revision}` : '';
+  const reviewer = typeof item.reviewer === 'string' && item.reviewer.trim() ? item.reviewer.trim() : 'A clinician';
+  if (type === 'communicationdraftingstarted') return { title: `${name}: drafting${revision}`, summary: 'The writing skill is drafting from the recorded outcome only. A named clinician reviews it before use.', failure: false };
+  if (type === 'communicationactivity') {
+    if (item.activity === 'ReviewRetryScheduled') return { title: `${name}: waiting`, summary: 'The language model is busy; drafting will retry automatically.', failure: false };
+    return { title: `${name}: drafting`, summary: note && !isTechnical(note) ? recordText(note) : 'The writing skill is working on the draft.', failure: false };
+  }
+  if (type === 'communicationdrafted') return { title: `${name} ready for review${revision}`, summary: note && !isTechnical(note) ? note : 'A draft is ready for clinician review.', failure: false };
+  if (type === 'communicationfailed') return { title: `${name} could not be drafted`, summary: documentError(note), failure: true };
+  if (type === 'communicationapproved') return { title: `${name} approved`, summary: note ? recordText(note) : `${reviewer} approved the draft.`, failure: false };
+  if (type === 'communicationchangesrequested') return { title: `${name}: changes requested`, summary: `${reviewer} asked for: ${recordText(note)}`, failure: false };
+  return null;
+}
 /** Narrates a recorded meeting event for clinicians, without provider or transport detail. */
 function structuredActivity(item: Data, type: string, role?: Role): ClinicalActivity | null {
   const who = role ? ROLE_NAME[role] : null;
@@ -208,6 +242,8 @@ function structuredActivity(item: Data, type: string, role?: Role): ClinicalActi
 }
 export function clinicalActivity(item: Data, role?: Role): ClinicalActivity {
   const type = typeof item.type === 'string' ? normalized(item.type) : '';
+  const communication = communicationActivity(item, type);
+  if (communication) return communication;
   const raw = [item.summary, item.message, item.question, item.resolution, item.assessment, item.position, item.comment, item.detail].find(value => typeof value === 'string' && value.trim()) as string | undefined;
   const error = item.error === true ? raw || type : item.error ?? (/failed|failure|error|unavailable/.test(type) ? raw || type : null);
   if (error) return { title: 'Review needs attention', summary: clinicalError(error, typeof item.status_code === 'number' ? item.status_code : undefined), failure: true };

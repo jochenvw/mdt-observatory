@@ -6,13 +6,16 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import FakeDrafter
 from fastapi.testclient import TestClient
 
 from mdt import agents
 from mdt.app import COOKIE, cookie_value, create_app, valid_cookie
 from mdt.config import Settings
+from mdt.engine import Engine
 from mdt.models import Position, Role
 from mdt.scenario import CASE
+from mdt.store import Store
 
 
 def test_application_passes_explicit_runtime_settings(
@@ -110,6 +113,7 @@ def test_case_catalog_is_protected_and_only_configured_cases_can_start(tmp_path:
                 "id": case["id"], "title": case["diagnosis"],
                 "patient_label": case["pseudonym"],
                 "stage": case["stage"], "question": case["question"],
+                "preferred_language": case.get("preferred_language", "en"),
             }
             for identifier in case_ids() for case in (get_case(identifier).case,)
         ]
@@ -367,3 +371,89 @@ def test_readiness_is_unavailable_when_storage_fails(tmp_path: Path) -> None:
         response = client.get("/readyz")
         assert response.status_code == 503
         assert "Simulated" not in response.text
+
+def settle_documents(client: TestClient) -> dict[str, Any]:
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        state: dict[str, Any] = client.get("/api/meeting").json()
+        documents = state["communications"]
+        if documents and all(item["status"] != "DRAFTING" for item in documents.values()):
+            return state
+        time.sleep(0.01)
+    raise AssertionError("Outcome documents did not finish drafting.")
+
+
+def test_outcome_document_review_routes(tmp_path: Path) -> None:
+    settings = Settings(
+        db_path=str(tmp_path / "outcome.db"), step_delay=0, presenter_token="o" * 32
+    )
+    engine = Engine(Store(settings.db_path), settings, agents.analyze, drafter=FakeDrafter())
+    with TestClient(create_app(settings, engine=engine)) as client:
+        started = client.post("/api/meetings", json={"mode": "rehearsal"})
+        assert started.status_code == 401
+        assert client.post("/api/auth", json={"token": "o" * 32}).status_code == 200
+        meeting_id = client.post("/api/meetings", json={"mode": "rehearsal"}).json()["id"]
+        base = f"/api/meetings/{meeting_id}/communications"
+        drain(client)
+        guidance = {"role": "radiology", "guidance": "Review all nine liver sites first."}
+        assert client.post(f"/api/meetings/{meeting_id}/steer", json=guidance).status_code == 200
+        drain(client)
+        client.post(f"/api/meetings/{meeting_id}/followup", json={})
+        state = drain(client)
+        version = state["plan"]["version"]
+        early = {"reviewer": "Dr A", "plan_version": version, "revision": 1}
+        assert client.post(f"{base}/patient/approve", json=early).status_code == 409
+        for role in Role:
+            if role.value not in state["concurrences"]:
+                vote = {"role": role.value, "plan_version": version}
+                concurred = client.post(f"/api/meetings/{meeting_id}/concur", json=vote)
+                assert concurred.status_code == 200
+        state = settle_documents(client)
+        assert state["phase"] == "DECISION_CAPTURED"
+        assert state["communications"]["patient"]["status"] == "DRAFT"
+
+        assert client.post(f"{base}/family/approve", json=early).status_code == 422
+        nameless = {"plan_version": version, "revision": 1}
+        assert client.post(f"{base}/patient/approve", json=nameless).status_code == 422
+        long_name = {**early, "reviewer": "x" * 81}
+        assert client.post(f"{base}/patient/approve", json=long_name).status_code == 422
+        blank = {**early, "reviewer": "  "}
+        assert client.post(f"{base}/patient/approve", json=blank).status_code == 409
+        stale = {**early, "revision": 2}
+        assert client.post(f"{base}/patient/approve", json=stale).status_code == 409
+
+        approved = client.post(
+            f"{base}/patient/approve", json={**early, "role": "oncology", "comment": "Clear."}
+        )
+        assert approved.status_code == 200
+        patient = approved.json()["communications"]["patient"]
+        assert (patient["status"], patient["approved_by"], patient["approved_role"]) == (
+            "APPROVED", "Dr A", "oncology",
+        )
+
+        change = {**early, "comment": ""}
+        assert client.post(f"{base}/clinician/request-changes", json=change).status_code == 409
+        change["comment"] = "Add the follow-up clinic."
+        changed = client.post(f"{base}/clinician/request-changes", json=change)
+        assert changed.status_code == 200
+        assert changed.json()["communications"]["clinician"]["revision"] == 2
+        state = settle_documents(client)
+        assert state["communications"]["clinician"]["status"] == "DRAFT"
+        reviewer = {"reviewer": "Dr A"}
+        assert client.post(f"{base}/patient/regenerate", json=reviewer).status_code == 409
+        regenerated = client.post(f"{base}/clinician/regenerate", json={"reviewer": "Dr A"})
+        assert regenerated.status_code == 200
+        state = settle_documents(client)
+        assert state["communications"]["clinician"]["revision"] == 3
+        assert state["phase"] == "DECISION_CAPTURED"
+
+        exported = client.get(f"/api/meetings/{meeting_id}/export").json()
+        assert exported["communications"]["patient"]["status"] == "APPROVED"
+        types = [event["type"] for event in exported["events"]]
+        for kind in (
+            "CommunicationDrafted", "CommunicationApproved", "CommunicationChangesRequested",
+            "CommunicationDraftingStarted",
+        ):
+            assert kind in types
+        client.cookies.clear()
+        assert client.post(f"{base}/clinician/regenerate", json=reviewer).status_code == 401

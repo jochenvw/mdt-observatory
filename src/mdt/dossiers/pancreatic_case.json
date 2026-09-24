@@ -6,6 +6,7 @@
     "pseudonym": "PDAC-2026-003",
     "age": 72,
     "patient": "PDAC case · 72-year-old woman",
+    "preferred_language": "it",
     "source_sections": [
       {
         "id": "source_introduction",
@@ -3494,6 +3495,7 @@
     },
     "patient": {
       "workspace": "Cognition, independence and consent for assisted decisions",
+      "language": "Italian-speaking; grew up in Italy and prefers spoken and written information in Italian. Her daughter sometimes interprets.",
       "question": "How can consent preserve cognition, independent living and a meaningful human decision about ICU/HDU or escalation while considering cancer survival?",
       "caveats": [
         "Fictional demonstration only; not clinical treatment instructions.",
