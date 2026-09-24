@@ -1,6 +1,33 @@
 # MDT Observatory deployment plan
 
-Status: Deployed - room synchronisation release live
+Status: Validated - review-findings release (PR #15, `main` at `6dd6eb2`)
+
+## Section 7: Validation Proof - review-findings release (2026-09-23)
+
+Scope: PR #15 (issues #4-#12). One infra change: `FORWARDED_ALLOW_IPS` is set to the
+ACA subnet prefix (now a shared `acaSubnetPrefix` variable). `httpx` moved to dev
+dependencies; runtime uses `httpx2`. No RBAC, quota, network-topology, storage-policy
+or scaling changes.
+
+| Command | Result |
+|---|---|
+| `uv run --frozen ruff check .` | All checks passed |
+| `uv run --frozen mypy` | Success: no issues found in 12 source files |
+| `MDT_BROWSER_TESTS=1 uv run --frozen pytest -q` | 249 passed |
+| `uv run --frozen --no-dev --isolated python -c "import mdt.app ..."` | Runtime-only import and `create_app()` OK (no `httpx` needed) |
+| PR #15 CI (includes frontend tests/build) | Both jobs succeeded |
+| `az bicep build --file infra/main.bicep` | Compiled clean |
+| `pwsh infra/tests/deployment-flow.ps1` | PASS: 11 safety scenarios, 3 scheduling overrides, 12 invalid inputs |
+| `az account show` | Approved subscription `e3825c9a-...`, Enabled |
+| `az deployment sub validate` (current image digest) | Succeeded |
+| `az deployment sub what-if --result-format ResourceIdOnly` | Deploy/Ignore only; no Delete; role assignments Unsupported (reference-based), as in baseline |
+| Static role review of `infra/modules/*.bicep` | Unchanged: AcrPull, Storage Blob Data Contributor on `mdt-state`, Cognitive Services OpenAI User |
+
+Pre-release hosted state: revision `mdt-observatory-vnet--r20260923132238-74fdea`,
+image `sha256:6f174811...`, `/healthz` and `/readyz` 200, rehearsal verified end to end
+in a 1920x1080 browser.
+
+Previous status: Deployed - room synchronisation release live
 
 Released 2026-09-17 (22:41 +02:00): image
 `sha256:378d7ffa39766c1c5d443b95964b46c44ffd8bcbf7a57e87e384541fb6c607d8`,
