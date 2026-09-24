@@ -26,6 +26,7 @@ from mdt.store import Persistence, Store
 from mdt.telemetry import configure
 
 COOKIE = "mdt_presenter"
+VERSION = "1.0.0"
 MAX_COMMAND_BYTES = 16384
 
 
@@ -180,7 +181,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
 
     application = FastAPI(
         title="MDT Observatory",
-        version="0.1.0",
+        version=VERSION,
         lifespan=lifespan,
         docs_url=None,
         redoc_url=None,
@@ -258,7 +259,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
         return {
             "modes": modes,
             "auth_required": bool(config.presenter_token),
-            "version": "0.1.0",
+            "version": VERSION,
             "disclaimer": "DEMONSTRATION SYSTEM. NOT FOR CLINICAL USE.",
         }
 
