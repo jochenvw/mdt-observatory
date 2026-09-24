@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { ArrowRight, ArrowUpRight, Brain, Check, ChevronDown, Clock3, Eye, Fingerprint, Focus, Heart, History, Layers, MessageSquareText, MoveUpRight, ScanLine, Send, ShieldCheck, Sparkles } from 'lucide-react';
-import { first, imagingSeries, label, roleAttention, text, time } from './helpers';
+import { first, imagingSeries, label, needsHumanReply, roleAttention, text, time } from './helpers';
 import type { ImagingMeasurement } from './helpers';
 import { Badge, BulletList, DataFields, Empty, EvidenceTable, Modal, roleMetaFor, SectionHeading, Status } from './ui';
 import type { EvidenceSelection } from './ui';
@@ -9,7 +9,7 @@ import type { Data, Meeting, Memory, Role, RoleState } from './types';
 import { clinicalActivity, clinicalData, clinicalItems, clinicalText } from './presentation';
 import { ROLE_LAYOUTS } from './roleLayouts';
 import { CaseClinical, ConversionClinical, isConversionCase } from './CaseDossier';
-import { clinicalProfile } from './caseProfiles';
+import { clinicalProfile, DEFAULT_RADIOLOGY_REPLY } from './caseProfiles';
 
 interface Props {
   role: Role;
@@ -46,6 +46,11 @@ export function Specialist({ role, meeting, pending, guidance, setGuidance, stee
   const events = meeting.events.filter(event => event.role === role || ['PlanProposed', 'PlanUpdated', 'DecisionCaptured', 'CaseClosed'].includes(event.type));
   const activity = events.length ? events.map(event => ({ ...event.payload, id: event.id, type: event.type, timestamp: event.timestamp })) : state?.activity ?? [];
   const blocked = pending || meeting.busy || meeting.phase === 'DECISION_CAPTURED';
+  const questions = meeting.phase === 'DECISION_CAPTURED' ? [] : meeting.frictions.filter(item => !item.resolved && item.roles.includes(role) && needsHumanReply(item, role));
+  const asking = questions.length > 0;
+  const stillOpen = asking && (state?.guidance.length ?? 0) > 0;
+  const exampleReply = profile?.reply ?? (conversionCase && role === 'radiology' ? DEFAULT_RADIOLOGY_REPLY : suggestedGuidance);
+  const example = asking ? exampleReply : suggestedGuidance;
   const memories = meeting.memories.filter(item => item.role === role);
   const liveMemory = memory ? meeting.memories.find(item => item.id === memory.id) : null;
   return <section data-testid={`workspace-${role}`} data-role={role} data-layout={layout.identity} aria-label={`${meta.label} specialist workspace`} className={layout.shell}>
@@ -56,7 +61,7 @@ export function Specialist({ role, meeting, pending, guidance, setGuidance, stee
       <div className="role-state col-span-2 sm:col-span-1"><Status value={state?.status ?? 'IDLE'} /></div>
       <ol aria-label="Specialty focus" className="role-focus col-span-2 flex flex-wrap gap-3 border-t border-cp-border pt-3 text-[10px] sm:col-span-3">{layout.focus.map((focus, index) => <li key={focus} className="flex items-center gap-2"><span aria-hidden="true" className="font-mono text-[10px]">{String(index + 1).padStart(2, '0')}</span>{focus}</li>)}</ol>
     </header>
-    <div data-testid="role-attention" role={attention.tone === 'danger' ? 'alert' : 'status'} className={`mb-4 rounded-xl border-l-4 bg-cp-surface p-4 ${attention.tone === 'danger' ? 'border-cp-danger' : attention.tone === 'warning' ? 'border-cp-warning' : attention.tone === 'success' ? 'border-cp-success' : 'border-[var(--cp-role)]'}`}><Badge tone={attention.tone} pulse={attention.running}>{attention.title}</Badge><p className="mt-2 text-xs leading-6">{attention.detail}</p></div>
+    <div data-testid="role-attention" role={attention.tone === 'danger' ? 'alert' : 'status'} className={`mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border-l-4 bg-cp-surface px-4 py-3 ${attention.tone === 'danger' ? 'border-cp-danger' : attention.tone === 'warning' ? 'border-cp-warning' : attention.tone === 'success' ? 'border-cp-success' : 'border-[var(--cp-role)]'}`}><Badge tone={attention.tone} pulse={attention.running}>{attention.title}</Badge><p className="text-xs leading-6">{attention.detail}</p></div>
     <div data-testid="activity-desk" className="grid items-start gap-4 md:grid-cols-[minmax(0,1fr)_minmax(260px,0.9fr)]">
       <section className="min-w-0 card p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h2 className="text-base">Review activity</h2><Badge>Newest first</Badge></div>
@@ -67,13 +72,17 @@ export function Specialist({ role, meeting, pending, guidance, setGuidance, stee
       <div className="min-w-0 space-y-4">
         {review}
         <details open={!review} className="min-w-0 card p-4 steering-panel">
-          <summary className="text-sm font-semibold"><MessageSquareText size={18} />Steer your specialist</summary><p className="my-3 text-xs leading-6 text-cp-text-muted">Ask a focused clinical question or challenge the assessment.</p>
+          <summary className="text-sm font-semibold"><MessageSquareText size={18} />{asking ? 'Your agent is asking you' : 'Instruct your agent'}</summary>
+          {asking ? <div data-testid="agent-question" role="status" className="my-3 rounded-xl border-l-4 border-cp-warning bg-cp-bg-elevated p-3 text-xs leading-6">
+            <p><strong>{stillOpen ? 'Your last reply did not say what you reviewed, so I have kept this open: ' : 'I cannot settle this from the record alone: '}</strong>{clinicalText(questions[0].question)}</p>
+            <div className="mt-1 text-cp-text-muted">{questions[0].missing.length > 0 && <><details className="inline [&[open]]:block"><summary className="inline cursor-pointer font-semibold text-cp-accent">What I need you to check ({questions[0].missing.length})</summary><ul className="my-2 list-disc space-y-1 pl-4 text-cp-text">{questions[0].missing.map(item => <li key={item}>{clinicalText(item)}</li>)}</ul></details></>}Tell me what you reviewed and found; “go ahead” is not enough.{questions.length > 1 ? ` ${questions.length - 1} more question${questions.length > 2 ? 's' : ''} follow.` : ''}</div>
+          </div> : <p className="my-3 text-xs leading-6 text-cp-text-muted">You are the specialist. Tell your agent what to review, or challenge its assessment.</p>}
           <form onSubmit={event => { event.preventDefault(); void steer(); }}>
-            <label className="sr-only" htmlFor={`guidance-${role}`}>Guidance for {meta.label}</label>
-            <textarea data-testid="guidance-input" id={`guidance-${role}`} value={guidance} onChange={event => setGuidance(event.target.value)} placeholder={suggestedGuidance} rows={3} maxLength={2000} />
-            <div className="form-footer mt-3 flex flex-wrap items-center justify-between gap-3"><button type="button" className="text-button" onClick={() => setGuidance(suggestedGuidance)} disabled={blocked}>Use suggested guidance</button><button data-testid="send-guidance" className="button primary" type="submit" disabled={blocked || !guidance.trim()}><Send size={15} />Send guidance</button></div>
+            <label className="sr-only" htmlFor={`guidance-${role}`}>{asking ? 'Reply' : 'Instruction'} to the {meta.label} agent</label>
+            <textarea data-testid="guidance-input" id={`guidance-${role}`} value={guidance} onChange={event => setGuidance(event.target.value)} placeholder={example} rows={3} maxLength={2000} />
+            <div className="form-footer mt-3 flex flex-wrap items-center justify-between gap-3"><button type="button" className="text-button" onClick={() => setGuidance(example)} disabled={blocked}>{asking ? 'Use example reply' : 'Use suggested instruction'}</button><button data-testid="send-guidance" className="button primary" type="submit" disabled={blocked || !guidance.trim()}><Send size={15} />{asking ? 'Send reply' : 'Send instruction'}</button></div>
           </form>
-          {(state?.guidance.length ?? 0) > 0 && <div className="guidance-receipt mt-4 flex items-start gap-3 border-t border-cp-border pt-4 [&>svg]:text-cp-success [&_strong]:text-xs [&_p]:my-1 [&_p]:text-xs [&_p]:leading-7 [&_small]:text-[10px] [&_small]:text-cp-text-muted"><Check size={15} /><div><strong>Human guidance received</strong><p>{state?.guidance.at(-1)}</p><small>{/REASSESS|ANALYZ|WORKING/i.test(state?.status ?? '') ? 'Agent reassessing…' : `Current position revision ${state?.revision ?? 0} · see activity for reassessment outcome`}</small></div></div>}
+          {(state?.guidance.length ?? 0) > 0 && <div className="guidance-receipt mt-4 flex items-start gap-3 border-t border-cp-border pt-4 [&>svg]:text-cp-success [&_strong]:text-xs [&_p]:my-1 [&_p]:text-xs [&_p]:leading-7 [&_small]:text-[10px] [&_small]:text-cp-text-muted"><Check size={15} /><div><strong>Your last message</strong><p>{state?.guidance.at(-1)}</p><small>{/REASSESS|ANALYZ|WORKING/i.test(state?.status ?? '') ? 'Agent reassessing…' : `Current position revision ${state?.revision ?? 0} · see activity for reassessment outcome`}</small></div></div>}
         </details>
         <details className="min-w-0 card p-4"><summary className="text-sm font-semibold"><Brain size={18} />Saved review preferences</summary>
           {memories.length ? <div className="memory-list space-y-3">{memories.map(item => <article className={`memory-card rounded-xl border border-cp-border bg-cp-bg-elevated p-4 [&>p]:my-3 [&>p]:text-xs [&>p]:leading-7 ${item.status === 'FORGOTTEN' ? 'forgotten [&>p]:italic [&>p]:text-cp-text-muted' : ''}`} key={item.id}>

@@ -229,3 +229,23 @@ describe('specialty-specific clinical compositions', () => {
     expect(markup).not.toContain('calibrated clinical confidence');
   });
 });
+describe('agent question to the specialist', () => {
+  it('asks the human in the first person and offers a reported-finding reply', () => {
+    const friction = { id: 'imaging', question: 'Can targeted human review map all 11 original sites?', roles: ['radiology' as Role], missing: ['Reconcile all 11 baseline sites.', 'PROTOCOL_NOT_PUBLIC: confirm the local pathway.'], blocking: true, resolved: false, resolution: null };
+    const setup = (meeting: Meeting) => { meeting.phase = 'TARGETED_DISCUSSION'; meeting.case = { id: 'CASE-MDT-CRC-WT-2026-002' }; meeting.frictions = [friction]; meeting.roles.radiology!.status = 'DONE'; };
+    const asking = renderScenario('radiology', {}, setup);
+    expect(asking).toContain('data-testid="agent-question"');
+    expect(asking).toContain('I cannot settle this from the record alone');
+    expect(asking).toContain('Can targeted human review map all 11 original sites?');
+    expect(asking).toContain('What I need you to check (2)');
+    expect(asking).not.toContain('PROTOCOL_NOT_PUBLIC');
+    expect(asking).toContain('Your agent is asking you');
+    expect(asking).toContain('Send reply');
+    expect(asking).toContain('placeholder="I reviewed the baseline and current MRI');
+    const stillOpen = renderScenario('radiology', {}, meeting => { setup(meeting); meeting.roles.radiology!.guidance = ['Go ahead']; });
+    expect(stillOpen).toContain('Your last reply did not say what you reviewed');
+    const quiet = renderScenario('radiology', {}, meeting => { meeting.phase = 'TARGETED_DISCUSSION'; });
+    expect(quiet).not.toContain('agent-question');
+    expect(quiet).toContain('Instruct your agent');
+  });
+});

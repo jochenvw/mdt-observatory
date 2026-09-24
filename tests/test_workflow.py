@@ -119,6 +119,42 @@ async def test_added_case_rejects_cross_case_evidence_before_proposal(
     await engine.close()
 
 
+def _example_replies() -> dict[str, str]:
+    """Radiology example replies the frontend offers when its agent asks for input."""
+    import re
+
+    source = (Path(__file__).parents[1] / "frontend" / "src" / "caseProfiles.ts").read_text(
+        encoding="utf-8"
+    )
+    conversion, pancreatic = source.split("const pancreaticProfiles", 1)
+    reply = r"radiology: \{.*?reply: '([^']+)'"
+    return {
+        str(CASE["id"]): re.search(r"DEFAULT_RADIOLOGY_REPLY = '([^']+)'", source).group(1),  # type: ignore[union-attr]
+        "CASE-MDT-CRC-WT-2026-002": re.search(reply, conversion, re.S).group(1),  # type: ignore[union-attr]
+        "CASE-MDT-PDAC-PERIOP-2026-003": re.search(reply, pancreatic, re.S).group(1),  # type: ignore[union-attr]
+    }
+
+
+@pytest.mark.parametrize("case_id", sorted(_example_replies()))
+async def test_general_approval_keeps_the_imaging_question_open_until_a_review_is_reported(
+    tmp_path: Path, case_id: str,
+) -> None:
+    engine = make_engine(tmp_path)
+    started = await engine.start("rehearsal", case_id)
+    await settled(engine)
+    meeting = engine.get(started.id)
+    await engine.steer(started.id, Role.RADIOLOGY, "It's fine - we can do it - go ahead")
+    await settled(engine)
+    imaging = next(f for f in meeting.frictions if f.id == "imaging")
+    assert not imaging.resolved, "approval that names no review must not close the question"
+    assert meeting.roles[Role.RADIOLOGY].position.autonomy == "ESCALATE"
+    await engine.steer(started.id, Role.RADIOLOGY, _example_replies()[case_id])
+    await settled(engine)
+    assert next(f for f in meeting.frictions if f.id == "imaging").resolved
+    assert meeting.roles[Role.RADIOLOGY].position.autonomy == "REVIEW"
+    await engine.close()
+
+
 def make_engine(tmp_path: Path, drafter: FakeDrafter | None = None) -> Engine:
     settings = Settings(db_path=str(tmp_path / "mdt.db"), step_delay=0)
     return Engine(Store(settings.db_path), settings, analyze, drafter=drafter or FakeDrafter())

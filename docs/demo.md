@@ -50,6 +50,18 @@ snapshot on the right. **View case record** opens the complete dossier.
 Detailed specialty source workspaces and saved preferences expand on demand.
 During concurrence, the review form leads; guidance remains expandable below it.
 
+**When the human must intervene.** A question the agent cannot settle from the
+record, such as the imaging question on the radiology workspace, shows **Your
+input is needed** on that workspace and in its sidebar entry. The reply panel
+(**Your agent is asking you**) quotes the question in the agent's voice and lists
+what it needs checked. The human specialist answers with what they reviewed and
+found; **Use example reply** fills in a demonstration report. General approval
+("go ahead") names nothing reviewed, so the question stays open and the panel
+says why. After a valid reply the workspace shows **Question answered** and the
+next step: the chair runs the focused follow-up round, then proposes a plan.
+Specialties whose question closes in that follow-up round show **Waiting for the
+chair** instead of asking for input.
+
 Public updates ease in over 900 ms, unless reduced motion is selected. This does
 not slow the actual meeting or delay errors and requests for human input.
 Attention labels distinguish running, finished, updated and input-needed states.
@@ -68,7 +80,7 @@ Operational errors do not appear as the next clinical question.
 | 0:15 | Inspect the friction cards | Complete liver-site clearance versus biological disease control |
 | 0:20 | Open Radiology, then expand the clinical workspace | Live assessment first; all nine liver sites, measurements, vessel relationships and indeterminate 5 mm lung nodule remain inspectable |
 | 0:25 | Inspect the memory nudge; explicitly use or ignore it | A preference is visible, not silently applied |
-| 0:30 | Steer: "Review all nine liver sites, vessel margins and the indeterminate lung nodule before clearance planning." | Human guidance, reassessment, revised position with remaining conditions |
+| 0:30 | Answer the radiology agent's question (**Use example reply** or: "I reviewed all nine liver sites, the vessel margins and the lung nodule…") | The agent asked; the human reports the review; reassessment and revised position with remaining conditions |
 | 0:40 | Return to chair; request targeted follow-up | Only relevant roles investigate remaining questions |
 | 0:50 | Inspect Research / Protocol and click a claim | Source, region, access, applicability and limitations |
 | 1:00 | Compare three management options and the conditional proposal | Local treatment now, further systemic therapy, or deferred local treatment; no automatic surgery decision |
@@ -150,16 +162,17 @@ not a complete measured lesion map. Six clear residual lesions, three disappeare
 sites and two scars must not be conflated with the additional uncertain 7 mm
 focus. Persistent ctDNA is not a surgical veto; grade 2 neuropathy affects the
 trade-off between more systemic treatment and conditional local therapy.
-Radiology guidance can be: "Review liver mapping, vascular margins and all
-baseline sites." Request the targeted round and compare all six supplied
+Radiology's reply can be **Use example reply**: a reported review of all 11
+original sites, the 7 mm IVa focus, the vessels and the remnant. Request the
+targeted round and compare all six supplied
 strategies before reviewing the conditional proposal.
 
 For **PDAC-2026-003**, compare technically plausible resection with perioperative
 reserve and cognition/independence goals. The source's CKD stage label and eGFR
 are inconsistent; risk scores and model probabilities are supplied illustrations,
 not independently calculated or validated predictions. No model chooses pressure
-targets, medication withholding, treatment or ICU placement. Radiology guidance
-can be: "Review pancreatic imaging, vascular anatomy and the limitations of
-cardiac imaging." The targeted round retains cardiac stability, local protocols,
+targets, medication withholding, treatment or ICU placement. Radiology's reply
+can be **Use example reply**: a reported review of the SMV/portal interface,
+with aortic stenosis and cardiac reserve still pending. The targeted round retains cardiac stability, local protocols,
 alert ownership, patient discussion and postoperative monitoring as conditions.
 The staged hypotension example is hypothetical, not an observed clinical event.
