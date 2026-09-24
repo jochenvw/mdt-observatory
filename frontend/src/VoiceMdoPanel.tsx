@@ -279,7 +279,7 @@ export function VoiceMdoPanel({
         <p className="mb-3 text-xs leading-6 text-cp-text-muted">Consent is required before recording or transcription. When you begin speaking, current playback is paused and preserved.</p>
         <div className="mb-3 flex flex-wrap gap-2">
           <button className="button" onClick={startMic}><Mic size={15} />Join discussion</button>
-          <button className="button secondary" onMouseDown={startMic} onMouseUp={() => recognitionRef.current?.stop()} onKeyDown={event => { if (event.key === ' ') startMic(); }} onKeyUp={event => { if (event.key === ' ') recognitionRef.current?.stop(); }}>Push-to-talk</button>
+          <button className="button secondary" onMouseDown={startMic} onMouseUp={() => recognitionRef.current?.stop()} onKeyDown={event => { if (event.key === ' ' && !event.repeat) startMic(); }} onKeyUp={event => { if (event.key === ' ') recognitionRef.current?.stop(); }}>Push-to-talk</button>
           <button className="button secondary" onClick={() => recognitionRef.current?.stop()}>Mute microphone</button>
         </div>
         {micState === 'denied' && <div className="alert">Microphone access was denied. Use the text correction box to add a confirmed contribution instead.</div>}

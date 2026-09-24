@@ -295,6 +295,25 @@ def test_voice_contribution_is_audited_and_routed_without_decision_approval(
         assert latest["phase"] == meeting["phase"]
 
 
+def test_voice_contribution_rejects_blank_confirmed_transcript(tmp_path: Path) -> None:
+    settings = Settings(db_path=str(tmp_path / "voice-blank.db"), step_delay=0)
+    with TestClient(create_app(settings)) as client:
+        started = client.post("/api/meetings", json={"mode": "rehearsal"})
+        assert started.status_code == 201
+        meeting = drain(client)
+        response = client.post(
+            f"/api/meetings/{meeting['id']}/voice/contributions",
+            json={
+                "transcript": "   ",
+                "corrected_transcript": " ",
+                "addressed_to": "chair",
+                "confirmation_mode": True,
+            },
+        )
+        assert response.status_code == 409
+        assert response.json()["detail"] == "Voice transcription cannot be empty."
+
+
 def test_voice_speech_requires_server_side_key_and_never_accepts_unknown_voice(
     tmp_path: Path,
 ) -> None:
