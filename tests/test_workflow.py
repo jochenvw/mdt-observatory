@@ -633,9 +633,52 @@ async def test_known_evidence_is_referenced_not_copied_into_events(tmp_path: Pat
     changed = meeting.evidence[0].model_dump(mode="json") | {"title": "Different record"}
     kept = engine._reference_known_evidence({"summary": "x", "evidence": changed})
     assert kept["evidence"] == changed, "differing records stay in full for the audit trail"
-    # Regression bound: 51.1 MB before references; 37.9 MB measured after.
+    # Full snapshots were 37.9 MB for this round; the dossier is now stored once.
     assert store.written < 40_000_000
+    print(f"stored {store.bytes_written:,} bytes of {store.written:,} serialized")
+    assert store.bytes_written <= 25_500_000
     await engine.close()
+
+
+async def test_split_snapshots_rebuild_the_exact_meeting(tmp_path: Path) -> None:
+    engine, _ = slow_engine(tmp_path)
+    started = await engine.start("rehearsal")
+    await settled(engine)
+    live = engine.get(started.id).model_dump()
+    await engine.close()
+    reopened = Store(str(tmp_path / "slow.db"))
+    dynamic = reopened.connection.execute(
+        "SELECT snapshot FROM meetings WHERE id=?", (started.id,)
+    ).fetchone()[0]
+    assert '"case"' not in dynamic and '"evidence":[{' not in dynamic
+    statics = reopened.connection.execute("SELECT COUNT(*) FROM meeting_static").fetchone()[0]
+    assert statics == 1
+    rebuilt = reopened.get(started.id)
+    assert rebuilt is not None and rebuilt.model_dump() == live
+    latest = reopened.latest()
+    assert latest is not None and latest.model_dump() == live
+    reopened.close()
+
+
+def test_legacy_full_snapshots_stay_readable(tmp_path: Path) -> None:
+    from mdt.models import Meeting
+
+    store = Store(str(tmp_path / "legacy.db"))
+    legacy = Meeting(id="legacy-1", created_at="2025-01-01T00:00:00Z", case={"id": "CASE-LEGACY"})
+    with store.connection:
+        store.connection.execute(
+            "INSERT INTO meetings VALUES (?, ?, ?)",
+            (legacy.id, legacy.created_at, legacy.model_dump_json()),
+        )
+    loaded = store.get(legacy.id)
+    assert loaded is not None and loaded.model_dump() == legacy.model_dump()
+    latest = store.latest()
+    assert latest is not None and latest.case == {"id": "CASE-LEGACY"}
+    store.save(loaded)
+    assert store.connection.execute("SELECT COUNT(*) FROM meeting_static").fetchone()[0] == 1
+    resaved = store.get(legacy.id)
+    assert resaved is not None and resaved.model_dump() == legacy.model_dump()
+    store.close()
 
 # ------------------------------------------------------------ outcome communications
 async def decide(engine: Engine, case_id: str | None = None) -> str:

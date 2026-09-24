@@ -98,8 +98,8 @@ The UI never displays raw model chain of thought.
 
 An event has a meeting ID, monotonic sequence, timestamp, type, optional role
 and structured payload. Every event persists a transactional snapshot before
-it is broadcast. The chair serializes the meeting once per event; the same bytes
-are written to storage and sent to every stream. Storage calls run on one
+it is broadcast. The chair serializes the meeting once per event and sends the
+same bytes to every stream. Storage calls run on one
 dedicated worker thread, so a slow Blob write never blocks the event loop, health
 probes or open streams, while the single worker keeps writes in event order and
 the chair lock still admits one transition at a time. Reads of the active meeting
@@ -107,6 +107,14 @@ take the same lock, so they never observe a half-applied transition.
 `EvidenceFound` events and activity reference evidence already held in the
 meeting by `evidence_id`; a record that differs from the meeting's copy is kept
 in full, so exports remain a complete audit record.
+The store splits each snapshot on its worker thread. The static dossier (case,
+role contexts and evidence) is fixed at start and saved once per meeting: in the
+`meeting_static` table in SQLite, or as a `meeting-static/<id>.json` blob. Each
+event then stores only the dynamic state. SQLite writes both records in one
+transaction. Blob writes the dossier first, under the same ETag gate. Reads join
+the two records. Legacy full snapshots, which carry `case` inline, load
+unchanged. For the WT rehearsal round this cuts stored bytes from 37.9 MB to
+about 8.3 MB.
 SSE transports complete snapshots; bounded subscriber queues
 coalesce intermediate renders without deleting persisted audit events. Reconnect
 always receives the latest full state, so a stale event cursor cannot drop state.
