@@ -51,14 +51,26 @@ export interface Evidence {
   authority: string;
   region: 'NL' | 'EU' | 'INTERNATIONAL' | 'US';
   kind: string;
-  access: 'PUBLIC_FULL_TEXT' | 'PUBLIC_ABSTRACT_ONLY' | 'LICENSED_INTERNAL' | 'NOT_ACCESSIBLE';
-  patient_match: 'HIGH' | 'PARTIAL' | 'LOW';
+  access:
+    | 'PUBLIC_FULL_TEXT'
+    | 'PUBLIC_ABSTRACT_ONLY'
+    | 'METADATA_ONLY'
+    | 'LICENSED_INTERNAL'
+    | 'NOT_ACCESSIBLE';
+  patient_match: 'HIGH' | 'PARTIAL' | 'LOW' | 'NOT_ASSESSED';
   passage: string;
   limitations: string[];
   scrutiny: Record<string, string>;
   synthetic: boolean;
-  retrieval: string;
+  retrieval: 'CURATED' | 'LIVE' | 'RECORDED';
+  retrieved_at?: string;
+  retrieved_via?: string;
+  source_tier?: SourceTier;
+  endpoint?: string;
+  query?: string;
+  identifiers?: Record<string, string>;
 }
+export type SourceTier = 'NL' | 'EU' | 'INTL' | 'US' | 'PREPRINT';
 export interface Friction {
   id: string;
   question: string;

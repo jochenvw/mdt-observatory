@@ -19,3 +19,8 @@ class Settings(BaseSettings):
     azure_request_interval_seconds: float = Field(default=20, ge=0, le=60, allow_inf_nan=False)
     # Smallest matched subgroup that may be described; smaller cohorts are suppressed.
     cohort_minimum_subgroup: int = Field(default=15, ge=5, le=500)
+    # Research may search allowlisted public literature and trial registers on top of
+    # the curated set. Rehearsal replays recorded responses and never uses the network.
+    literature_search: bool = True
+    # Optional NCBI E-utilities key (10 instead of 3 requests per second); never logged.
+    ncbi_api_key: str = Field(default="", repr=False)

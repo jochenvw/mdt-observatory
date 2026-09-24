@@ -293,15 +293,19 @@ async def test_all_roles_have_isolated_context_tools_and_grounded_positions(role
     assert result.provenance
     assert set(result.provenance) <= {
         item.id for item in get_case(CASE["id"]).role_evidence(role)
-    }
+    } | {payload["evidence"]["id"] for event, payload in events if event == "EvidenceFound"}
     assert {payload["tool"] for event, payload in events if event == "ToolStarted"} <= set(
-        agents.ROLE_TOOL_ALLOWLISTS[role]
+        agents.ROLE_TOOL_ALLOWLISTS[role] + agents.LIVE_TOOLS.get(role, ())
     )
     assert {"ToolStarted", "ToolCompleted", "ObservationAdded", "EvidenceFound"} <= {
         event for event, _ in events
     }
     found = [payload["evidence"] for event, payload in events if event == "EvidenceFound"]
-    assert all(item["retrieval"] == "CURATED" for item in found)
+    # Rehearsal never searches live: only research replays recorded searches, labelled so.
+    assert {item["retrieval"] for item in found} == (
+        {"CURATED", "RECORDED"} if role == Role.RESEARCH else {"CURATED"}
+    )
+    assert all(item["id"].startswith("REC-") for item in found if item["retrieval"] != "CURATED")
     assert f"CASE-CRC-{role.value.upper()}" in {item["id"] for item in found}
     messages = agents._messages(RunState(role, CASE["id"], "initial", []))
     data = json.loads(str(messages[1]["content"]))
@@ -672,7 +676,8 @@ async def test_model_step_budget_forces_final_structured_output(
 async def test_every_crc_role_phase_reserves_budget_and_receives_complete_role_data(
     monkeypatch: pytest.MonkeyPatch, role: Role, phase: str,
 ) -> None:
-    expected = await _run(role, phase=phase)
+    # The curated contract under test; live search is exercised by its own tests.
+    expected = await _run(role, phase=phase, settings=Settings(literature_search=False))
     responses = [_completion(tool=agents.CORE_TOOLS[role])]
     if phase == "followup" and role in agents.APPLICABILITY_ROLES:
         assessment = _completion(tool=f"assess_{role.value}_applicability")

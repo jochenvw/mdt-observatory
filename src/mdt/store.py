@@ -14,13 +14,20 @@ def split_snapshot(payload: str) -> tuple[str, str]:
     The case, role contexts and evidence are fixed when a meeting starts but make up
     most of every snapshot. They are stored once per meeting; each event stores only
     the rest. A dynamic record has no ``case`` key, which is how it differs from a
-    legacy full snapshot.
+    legacy full snapshot. Evidence found by a search during the meeting is per-event
+    state, so it stays in the dynamic record.
     """
     data = json.loads(payload)
+    evidence = data.pop("evidence", [])
+    data["found_evidence"] = [
+        item for item in evidence if item.get("retrieval", "CURATED") != "CURATED"
+    ]
     contexts = {name: role.pop("context", {}) for name, role in data.get("roles", {}).items()}
     static = {
         "case": data.pop("case", {}),
-        "evidence": data.pop("evidence", []),
+        "evidence": [
+            item for item in evidence if item.get("retrieval", "CURATED") == "CURATED"
+        ],
         "contexts": contexts,
     }
     return json.dumps(static, **_COMPACT), json.dumps(data, **_COMPACT)  # type: ignore[arg-type]
@@ -34,7 +41,7 @@ def join_snapshot(dynamic: str, static: str | None) -> Meeting:
             raise ValueError("Meeting state is missing its static dossier record.")
         fixed = json.loads(static)
         data["case"] = fixed["case"]
-        data["evidence"] = fixed["evidence"]
+        data["evidence"] = [*fixed["evidence"], *data.pop("found_evidence", [])]
         for name, role in data.get("roles", {}).items():
             role["context"] = fixed["contexts"].get(name, {})
     return Meeting.model_validate(data)

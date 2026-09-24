@@ -10,6 +10,7 @@ import { clinicalActivity, clinicalData, clinicalItems, clinicalText } from './p
 import { ROLE_LAYOUTS } from './roleLayouts';
 import { CaseClinical, ConversionClinical, isConversionCase } from './CaseDossier';
 import { clinicalProfile, DEFAULT_RADIOLOGY_REPLY } from './caseProfiles';
+import { ResearchOperationsPanel } from './ResearchPanel';
 
 interface Props {
   role: Role;
@@ -93,6 +94,7 @@ export function Specialist({ role, meeting, pending, guidance, setGuidance, stee
         </details>
       </div>
     </div>
+    {role === 'research' && <ResearchOperationsPanel meeting={meeting} inspect={inspect} />}
     <details className="my-5 card p-4"><summary className="text-sm font-semibold">Open {meta.label.toLowerCase()} clinical workspace and source records <ChevronDown size={14} /></summary>
       <div className="mt-4 space-y-5">
         {profile ? <CaseClinical role={role} meeting={meeting} inspect={inspect} /> : conversionCase ? <ConversionClinical role={role} meeting={meeting} inspect={inspect} /> : <>

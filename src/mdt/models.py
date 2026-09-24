@@ -4,7 +4,13 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+)
 
 
 def utcnow() -> str:
@@ -48,14 +54,36 @@ class Evidence(Contract):
     region: Literal["NL", "EU", "INTERNATIONAL", "US"]
     kind: str
     access: Literal[
-        "PUBLIC_FULL_TEXT", "PUBLIC_ABSTRACT_ONLY", "LICENSED_INTERNAL", "NOT_ACCESSIBLE"
+        "PUBLIC_FULL_TEXT", "PUBLIC_ABSTRACT_ONLY", "METADATA_ONLY", "LICENSED_INTERNAL",
+        "NOT_ACCESSIBLE",
     ]
-    patient_match: Literal["HIGH", "PARTIAL", "LOW"]
+    patient_match: Literal["HIGH", "PARTIAL", "LOW", "NOT_ASSESSED"]
     passage: str
     limitations: list[str]
     scrutiny: dict[str, str]
     synthetic: bool = False
-    retrieval: str = "CURATED"
+    retrieval: Literal["CURATED", "LIVE", "RECORDED"] = "CURATED"
+    # Provenance of searched evidence; curated records leave these empty.
+    retrieved_at: str | None = None
+    retrieved_via: str | None = None
+    source_tier: Literal["NL", "EU", "INTL", "US", "PREPRINT"] | None = None
+    endpoint: str | None = None
+    query: str | None = None
+    identifiers: dict[str, str] = Field(default_factory=dict)
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_provenance(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        # Curated records serialize exactly as before; only searched records carry these.
+        data: dict[str, Any] = handler(self)
+        for key in _PROVENANCE_FIELDS:
+            if key in data and not data[key]:
+                del data[key]
+        return data
+
+
+_PROVENANCE_FIELDS = (
+    "retrieved_at", "retrieved_via", "source_tier", "endpoint", "query", "identifiers",
+)
 
 
 class Claim(Contract):

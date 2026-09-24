@@ -157,6 +157,7 @@ PLAIN_CAPITALS = {"I", "OK", "A"}
 ACCESS_LABEL = {
     "PUBLIC_FULL_TEXT": "Public full text",
     "PUBLIC_ABSTRACT_ONLY": "Abstract only",
+    "METADATA_ONLY": "Bibliographic record only",
     "LICENSED_INTERNAL": "Licensed, internal",
     "NOT_ACCESSIBLE": "Not accessible",
 }

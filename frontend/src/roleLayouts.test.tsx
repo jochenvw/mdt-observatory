@@ -106,7 +106,7 @@ describe('scenario-shaped clinical data bindings', () => {
         region: 'NL', kind: 'GUIDELINE', access: 'PUBLIC_FULL_TEXT', patient_match: 'PARTIAL',
         passage: 'Curated paraphrase: this modular Dutch NSCLC guideline covers diagnostics, treatment, communication, follow-up and organisation of care. The overview is not a verified patient-specific treatment recommendation.',
         limitations: ['Only the overview was curated, not every treatment module.', 'Module-level recommendations, local adoption and reimbursement must be checked.'],
-        scrutiny: {}, synthetic: false, retrieval: 'Curated evidence',
+        scrutiny: {}, synthetic: false, retrieval: 'CURATED',
       },
       {
         id: 'EU-EMA-OPDIVO', title: 'Opdivo (nivolumab) - EMA European public assessment report',
@@ -114,7 +114,7 @@ describe('scenario-shaped clinical data bindings', () => {
         region: 'EU', kind: 'REGULATORY', access: 'PUBLIC_FULL_TEXT', patient_match: 'PARTIAL',
         passage: 'Curated paraphrase: the EMA overview describes neoadjuvant nivolumab plus platinum chemotherapy in resectable NSCLC producing PD-L1 and at high risk of recurrence. An authorisation is not proof of benefit or safety for this patient.',
         limitations: ['EU authorisation does not establish Dutch reimbursement or hospital approval.'],
-        scrutiny: {}, synthetic: false, retrieval: 'Curated evidence',
+        scrutiny: {}, synthetic: false, retrieval: 'CURATED',
       },
     ];
     const condition = 'Full current product information and toxicity management need clinician review.';

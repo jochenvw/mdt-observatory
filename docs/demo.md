@@ -82,7 +82,7 @@ Operational errors do not appear as the next clinical question.
 | 0:25 | Inspect the memory nudge; explicitly use or ignore it | A preference is visible, not silently applied |
 | 0:30 | Answer the radiology agent's question (**Use example reply** or: "I reviewed all nine liver sites, the vessel margins and the lung nodule…") | The agent asked; the human reports the review; reassessment and revised position with remaining conditions |
 | 0:40 | Return to chair; request targeted follow-up | Only relevant roles investigate remaining questions |
-| 0:50 | Inspect Research / Protocol and click a claim | Source, region, access, applicability and limitations |
+| 0:50 | Open Research; point at **Research operations**, then inspect Research / Protocol and click a claim | Which Dutch, EU, international, US and preprint sources were searched, the queries, what was found and what the position cites; source, region, access, applicability and limitations |
 | 1:00 | Compare three management options and the conditional proposal | Local treatment now, further systemic therapy, or deferred local treatment; no automatic surgery decision |
 | 1:02 | Scroll to Similar cases; remove a criterion, then apply the pending molecular result | The matched cohort, denominators and warnings recalculate; what comparable boards recorded stays separate from what those patients experienced |
 | 1:05 | Concur from the roles awaiting human review | Version-bound human sign-offs arrive centrally |
@@ -125,8 +125,16 @@ dose or recommendation the MDT did not record.
 unresolved questions. Humans intervene where judgment changes the outcome."
 
 Do not claim that illustrative confidence is medical probability, the curated
-searches are live research, the unavailable protocol was read, or the system
+evidence was searched live, the unavailable protocol was read, or the system
 is clinically validated. This is an interaction-model demonstrator.
+
+**Public searches.** In rehearsal the Research screen shows **Recorded replay**:
+real search responses captured on 2026-09-24, replayed without network access.
+Say "these are real searches recorded earlier", not "it is searching now". In live
+mode the badge reads **Live public search** and results depend on the sources
+responding. Either way, found papers are leads that are *not appraised for this
+patient*; a failed source is shown as unavailable, never hidden. Only clinical
+concepts are sent to public sources, never names, dates or case identifiers.
 
 For Similar cases, say what the cohort is: "Among the comparable historical cases
 in this synthetic cohort, this many boards recorded additional diagnostics first."

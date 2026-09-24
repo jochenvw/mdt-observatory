@@ -430,6 +430,22 @@ def test_specialty_layouts_themes_and_clinical_presentation(server: str) -> None
                 )
                 headings[role] = tuple(workspace.get_by_role("heading").all_text_contents())
                 assert len(headings[role]) >= 2
+                if role == "research":
+                    operations = page.get_by_test_id("research-operations")
+                    expect(operations).to_be_visible()
+                    expect(operations).to_contain_text("Recorded replay")
+                    expect(operations).to_contain_text("Nothing is searched live")
+                    expect(operations.locator("[data-source]")).to_have_count(6)
+                    assert operations.locator('[data-state="completed"]').count() >= 3
+                    assert operations.locator("[data-testid=research-searches] li").count() >= 3
+                    assert operations.locator("[data-evidence-id^='REC-']").count() >= 3
+                    expect(operations).to_contain_text("Cited in position")
+                    operations.locator("[data-evidence-id^='REC-'] button").first.click()
+                    drawer = page.get_by_test_id("source-drawer")
+                    expect(drawer).to_contain_text("Recorded search")
+                    expect(drawer).to_contain_text("Patient applicability not assessed")
+                    page.keyboard.press("Escape")
+                    expect(drawer).to_be_hidden()
                 page.screenshot(path=str(artifacts / f"{prefix}-{role}-{theme}.png"))
                 source_toggle = workspace.locator("summary").filter(
                     has_text=re.compile(r"Open .* clinical workspace and source records")

@@ -669,8 +669,9 @@ async def test_known_evidence_is_referenced_not_copied_into_events(tmp_path: Pat
     changed = meeting.evidence[0].model_dump(mode="json") | {"title": "Different record"}
     kept = engine._reference_known_evidence({"summary": "x", "evidence": changed})
     assert kept["evidence"] == changed, "differing records stay in full for the audit trail"
-    # Full snapshots were 37.9 MB for this round; the dossier is now stored once.
-    assert store.written < 40_000_000
+    # Full snapshots were 37.9 MB for this round (46 MB now that the research role also
+    # replays 16 recorded search events); the dossier is stored once either way.
+    assert store.written < 48_000_000
     print(f"stored {store.bytes_written:,} bytes of {store.written:,} serialized")
     assert store.bytes_written <= 25_500_000
     await engine.close()
@@ -693,6 +694,38 @@ async def test_split_snapshots_rebuild_the_exact_meeting(tmp_path: Path) -> None
     assert rebuilt is not None and rebuilt.model_dump() == live
     latest = reopened.latest()
     assert latest is not None and latest.model_dump() == live
+    reopened.close()
+
+
+async def test_recorded_searches_join_the_record_without_settling_applicability(
+    tmp_path: Path,
+) -> None:
+    engine = make_engine(tmp_path)
+    started = await engine.start("rehearsal")
+    await settled(engine)
+    meeting = engine.get(started.id)
+    curated = {item.id for item in get_case(str(CASE["id"])).evidence}
+    searched = [item for item in meeting.evidence if item.id not in curated]
+    assert searched, "the research specialist replays its recorded public searches"
+    assert all(item.retrieval == "RECORDED" and item.id.startswith("REC-") for item in searched)
+    assert all(item.retrieved_at and item.source_tier and item.query for item in searched)
+    assert all(item.patient_match == "NOT_ASSESSED" for item in searched)
+    assert {item.id for item in meeting.evidence} >= curated, "curated records are never replaced"
+    for item in meeting.evidence:
+        if item.id in curated:
+            assert item.retrieval == "CURATED" and "retrieved_at" not in item.model_dump()
+    research = meeting.roles[Role.RESEARCH].position
+    assert research and set(research.provenance) & {item.id for item in searched}
+    assert not next(f for f in meeting.frictions if f.id == "applicability").resolved, (
+        "finding papers never settles the patient-applicability question"
+    )
+    saved = meeting.model_dump(mode="json")
+    exported = meeting.model_dump_json()
+    assert all(item.id in exported for item in searched)
+    await engine.close()
+    reopened = Store(str(tmp_path / "mdt.db"))
+    restored = reopened.get(started.id)
+    assert restored is not None and restored.model_dump(mode="json") == saved
     reopened.close()
 
 

@@ -76,14 +76,30 @@ export function EvidenceDrawer({ selection, evidence, close }: { selection: Evid
     {sources.map((source, index) => source ? <EvidenceDetail key={source.id} source={source} /> : <div className="alert" key={selection.ids[index]}>Source {recordText(selection.ids[index])} is not available in this snapshot. This claim cannot yet be verified.</div>)}
   </Modal>;
 }
+const TIER_LABEL: Record<string, string> = { NL: 'Dutch source', EU: 'European source', INTL: 'International source', US: 'US context · not EU standard', PREPRINT: 'Preprint · not peer reviewed' };
+export function tierLabel(tier?: string): string { return tier ? TIER_LABEL[tier] ?? tier : ''; }
+export function retrievalLabel(source: Evidence): string {
+  if (source.retrieval === 'LIVE') return `Found live${source.retrieved_via ? ` in ${source.retrieved_via}` : ''} · not curated`;
+  if (source.retrieval === 'RECORDED') return `Recorded search${source.retrieved_via ? ` of ${source.retrieved_via}` : ''} · rehearsal replay`;
+  return 'Curated evidence';
+}
+function accessNote(access: Evidence['access']): string {
+  if (access === 'PUBLIC_ABSTRACT_ONLY') return 'Abstract only. Full text has not been retrieved.';
+  if (access === 'METADATA_ONLY') return 'Only the bibliographic record or registry entry was read. Open the original before relying on it.';
+  if (access === 'NOT_ACCESSIBLE') return 'Source is not accessible. Do not interpret as verified full text.';
+  if (access === 'LICENSED_INTERNAL') return 'Licensed/internal source; not publicly accessible.';
+  return 'Public full-text access classification supplied by the evidence service.';
+}
 function EvidenceDetail({ source }: { source: Evidence }) {
   const url = safeUrl(source.url);
+  const searched = source.retrieval !== 'CURATED';
   return <article className="evidence-detail border-t border-cp-border py-6 [&>h3]:my-4 [&>h3]:text-xl [&>.muted]:text-xs [&>.button]:mt-4">
-    <div className="row flex items-center gap-2 wrap flex-wrap"><Badge tone="accent">{source.region === 'US' ? 'US context · not EU standard' : source.region}</Badge><Badge>{label(source.kind)}</Badge><Badge tone={source.patient_match === 'HIGH' ? 'success' : 'warning'}>{label(source.patient_match)} patient match</Badge></div>
-    <h3>{source.title}</h3><p className="muted text-sm leading-7 text-cp-text-muted">{source.authority} · {source.date} · {recordText(source.id)}</p>
-    <div className="access-box my-4 flex items-start gap-3 rounded-xl border border-cp-border bg-cp-bg-elevated p-4 [&>svg]:text-cp-accent [&_strong]:text-xs [&_p]:mt-2 [&_p]:text-xs [&_p]:leading-7 [&_p]:text-cp-text-muted"><ShieldCheck size={19} /><div><strong>{label(source.access)}</strong><p>{source.access === 'PUBLIC_ABSTRACT_ONLY' ? 'Abstract only. Full text has not been retrieved.' : source.access === 'NOT_ACCESSIBLE' ? 'Source is not accessible. Do not interpret as verified full text.' : source.access === 'LICENSED_INTERNAL' ? 'Licensed/internal source; not publicly accessible.' : 'Public full-text access classification supplied by the evidence service.'}</p></div></div>
-    <div className="row flex items-center gap-2 wrap flex-wrap"><Badge>{source.retrieval === 'CURATED' ? 'Curated evidence' : 'Recorded evidence source'}</Badge>{source.synthetic && <Badge tone="warning">Case record source</Badge>}</div>
-    <h4>Supporting passage / data</h4><blockquote>{source.passage || 'No supporting passage was supplied.'}</blockquote>
+    <div className="row flex items-center gap-2 wrap flex-wrap"><Badge tone={source.source_tier === 'US' || source.source_tier === 'PREPRINT' ? 'warning' : 'accent'}>{source.source_tier ? tierLabel(source.source_tier) : source.region === 'US' ? 'US context · not EU standard' : source.region}</Badge><Badge>{label(source.kind)}</Badge><Badge tone={source.patient_match === 'HIGH' ? 'success' : 'warning'}>{source.patient_match === 'NOT_ASSESSED' ? 'Patient applicability not assessed' : `${label(source.patient_match)} patient match`}</Badge></div>
+    <h3>{source.title}</h3><p className="muted text-sm leading-7 text-cp-text-muted">{source.authority} · {source.date} · {searched ? source.id : recordText(source.id)}</p>
+    <div className="access-box my-4 flex items-start gap-3 rounded-xl border border-cp-border bg-cp-bg-elevated p-4 [&>svg]:text-cp-accent [&_strong]:text-xs [&_p]:mt-2 [&_p]:text-xs [&_p]:leading-7 [&_p]:text-cp-text-muted"><ShieldCheck size={19} /><div><strong>{source.access === 'METADATA_ONLY' ? 'Bibliographic record only' : label(source.access)}</strong><p>{accessNote(source.access)}</p></div></div>
+    <div className="row flex items-center gap-2 wrap flex-wrap"><Badge tone={searched ? 'warning' : ''}>{retrievalLabel(source)}</Badge>{source.synthetic && <Badge tone="warning">Case record source</Badge>}</div>
+    {searched && source.query && <p className="muted text-xs leading-6 text-cp-text-muted">Search: “{source.query}”{source.retrieved_at ? ` · ${source.retrieval === 'RECORDED' ? 'captured' : 'retrieved'} ${source.retrieved_at.slice(0, 10)}` : ''}</p>}
+    <h4>{searched ? 'Abstract or record excerpt' : 'Supporting passage / data'}</h4><blockquote>{source.passage || 'No supporting passage was supplied.'}</blockquote>
     {Object.keys(source.scrutiny).length > 0 && <><h4>Critical appraisal</h4><DataFields data={source.scrutiny} compact /></>}
     {source.limitations.length > 0 && <><h4>Limitations & applicability</h4><BulletList items={source.limitations} /></>}
     {url ? <a className="button secondary" href={url} target="_blank" rel="noopener noreferrer">Open original source <ArrowUpRight size={16} /></a> : <p className="muted text-sm leading-7 text-cp-text-muted">No safe HTTPS source link available.</p>}

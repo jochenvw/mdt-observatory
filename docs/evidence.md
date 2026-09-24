@@ -87,9 +87,9 @@ corrections are invented.
 
 ## Evidence access and limits
 
-Both modes execute local role-allowlisted tools labelled `CURATED`, never simulated
+Curated role tools are local and labelled `CURATED`, never simulated
 network searches. Source inspection and deterministic calculations are real. Independent
-research review on **2026-09-17** retrieved the sources below; runtime tools do not repeat
+research review on **2026-09-17** retrieved the sources below; curated tools do not repeat
 that retrieval or claim a live search. Case links use `case://` as local identifiers.
 The legacy evidence boolean is retained in the schema for saved-export compatibility;
 clinical panels should identify records by `CASE_RECORD` and show the demo banner.
@@ -121,6 +121,45 @@ BRAF-directed therapy in the control arm remains an explicit interpretation cave
 publication, full protocol/amendments, regulatory indication, reimbursement and local
 approval remain distinct. Protocol access is a retained condition on a proposed review,
 not permission to start treatment.
+
+## Public literature and trial search
+
+On top of the curated set, the **research role only** can search six public sources
+(`src/mdt/literature.py`). Other roles are never offered these tools.
+
+| Tier | Source | Host | Tool |
+| --- | --- | --- | --- |
+| NL | Richtlijnendatabase | `richtlijnendatabase.nl` | `search_dutch_guidelines` |
+| EU | EU Clinical Trials register (CTIS) | `euclinicaltrials.eu` | `search_clinical_trials` |
+| INTL | Europe PMC | `www.ebi.ac.uk` | `search_europepmc`, `fetch_abstract` |
+| INTL | PubMed (NCBI E-utilities) | `eutils.ncbi.nlm.nih.gov` | `search_pubmed` |
+| US | ClinicalTrials.gov | `clinicaltrials.gov` | `search_clinical_trials` |
+| PREPRINT | Preprints via Europe PMC | `www.ebi.ac.uk` | `search_preprints` |
+
+- **Retrieval labels.** `LIVE` (Azure mode, searched during the meeting) or `RECORDED`
+  (rehearsal: real responses captured by `scripts/record_searches.py` on 2026-09-24 and
+  replayed from `src/mdt/dossiers/recorded_searches.json`; the network is never used).
+  IDs are prefixed `LIVE-`/`REC-`. Curated records keep `CURATED` and serialise unchanged.
+- **Honesty.** Searched records carry `patient_match: NOT_ASSESSED`, all scrutiny fields
+  "not extracted", and limitations naming the retrieval, US context or preprint status.
+  Registry and guideline hits are `METADATA_ONLY`; abstracts are `PUBLIC_ABSTRACT_ONLY`.
+  Duplicates of curated records (by PMID, PMCID, DOI, NCT or EU CT number) are not added.
+  Finding papers never settles the patient-applicability friction.
+- **Privacy.** Queries are clinical concepts only; any query containing case identifiers,
+  dates, ages, record numbers or e-mail addresses is refused before a request is sent.
+  Only HTTPS requests to the five allowlisted hosts are possible; responses are capped
+  at 2 MB with one retry on 429/5xx.
+- **Budget.** At most six searches per analysis (further calls are refused, not fatal).
+  Search rounds earn at most two extra model steps and a bounded token allowance; the
+  curated-tool budget stays hard.
+- **Grounding.** A position may cite only records returned in that analysis; citing an
+  unreturned PMID, NCT or EU CT number fails validation.
+- **Failures.** An unavailable source becomes a visible uncertainty in the position and
+  on the Research screen; it never becomes a silent gap.
+- **Research screen.** The *Research operations* panel shows every source (searched,
+  unavailable or not searched), each query and its counts, and the papers, trials and
+  guidelines found, grouped Dutch → European → international → US → preprints, with
+  "Cited in position" markers and links to the public record.
 
 ## Original case: seven roles, eight specialty contributions
 

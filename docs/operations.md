@@ -80,6 +80,26 @@ managed-identity BlobStore in Azure and retains SQLite for local use. Bootstrap
 creates the Blob container, so the app does not need account-wide container-list
 permissions.
 
+### Public literature search (research role)
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `MDT_LITERATURE_SEARCH` | `true` | `false` removes the search tools; research works from curated evidence only. |
+| `MDT_NCBI_API_KEY` | unset | Optional NCBI key for higher PubMed rate limits. Sent only to NCBI, never recorded or logged. Store as an ACA secret if used. |
+
+Live mode needs outbound HTTPS from the app to `richtlijnendatabase.nl`,
+`euclinicaltrials.eu`, `www.ebi.ac.uk`, `eutils.ncbi.nlm.nih.gov` and
+`clinicaltrials.gov`. If egress is blocked, each search shows as an unavailable
+source and a visible research uncertainty; the meeting still completes. Verify
+egress after each deployment by starting a live case and checking that the Research
+operations panel shows completed sources. Rehearsal never uses the network.
+
+Refresh rehearsal fixtures (requires internet; review the diff before committing):
+
+```powershell
+uv run --frozen python scripts/record_searches.py
+```
+
 ### Live-role concurrency, pacing and model allocation
 
 The next-case mode selector is independent of the current meeting's mode badge.

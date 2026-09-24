@@ -23,6 +23,7 @@ from mdt.models import (
     CommunicationReview,
     Concurrence,
     Event,
+    Evidence,
     Friction,
     Meeting,
     Phase,
@@ -320,9 +321,12 @@ class Engine:
             guidance = list(state.guidance)
             mode = self.meeting.mode
 
+        searched: set[str] = set()
+
         async def emit(kind: str, payload: dict[str, Any]) -> None:
             async with self.lock:
                 assert self.meeting
+                self._accept_searched_evidence(kind, payload, searched)
                 payload = self._reference_known_evidence(payload)
                 current = self.meeting.roles[role]
                 current.activity.append({"type": kind, "timestamp": utcnow(), **payload})
@@ -355,6 +359,7 @@ class Engine:
                 if position.role != role or position.case_id != case_id:
                     raise ValueError("Agent output has mismatched role or case.")
                 evidence_ids = {item.id for item in get_case(case_id).role_evidence(role)}
+                evidence_ids |= searched
                 if not set(position.provenance) <= evidence_ids or any(
                     source not in evidence_ids
                     for claim in position.claims
@@ -378,6 +383,31 @@ class Engine:
         except Exception as exc:
             # Provider SDK errors vary; every failure becomes a persisted, visible failed role.
             await self._role_error(role, exc)
+
+    def _accept_searched_evidence(
+        self, kind: str, payload: dict[str, Any], searched: set[str]
+    ) -> None:
+        """Add a LIVE or RECORDED search result to the meeting's evidence, labelled as such.
+
+        Curated records are never replaced. A later fetch of the same record (its full
+        abstract) replaces the earlier search snippet.
+        """
+        assert self.meeting
+        evidence = payload.get("evidence")
+        if kind != "EvidenceFound" or not isinstance(evidence, dict):
+            return
+        if evidence.get("retrieval") not in {"LIVE", "RECORDED"}:
+            return
+        record = Evidence.model_validate(evidence)
+        for index, known in enumerate(self.meeting.evidence):
+            if known.id == record.id:
+                if known.retrieval == "CURATED":
+                    return
+                self.meeting.evidence[index] = record
+                break
+        else:
+            self.meeting.evidence.append(record)
+        searched.add(record.id)
 
     def _reference_known_evidence(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Store an evidence id instead of a copy the meeting already holds.

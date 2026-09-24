@@ -6,6 +6,7 @@ flowchart TD
   API --> Chair[Chair process state machine]
   Chair --> Agents[Seven separately scoped specialist runtimes]
   Agents --> Tools[Role-allowlisted curated tools]
+  Agents --> Search[Research only: allowlisted public literature and trial searches]
   Agents --> Model[Azure OpenAI structured tool calling]
   Agents --> Positions[Validated Position / Claim / Evidence]
   Positions --> Friction[Friction and uncertainty reconciliation]
@@ -23,7 +24,10 @@ flowchart TD
 The runtime is separate from MDT orchestration. Rehearsal and Azure runtimes
 implement the same `analyze` contract. Rehearsal deterministically executes the
 curated tools; Azure chooses allowed tools and produces a validated structured
-position. The process state machine and approval gates are application code,
+position. The research role alone may also search public sources on top of the
+curated set (see [evidence.md](evidence.md#public-literature-and-trial-search)):
+live in Azure mode, and as a labelled replay of recorded responses in rehearsal.
+The process state machine and approval gates are application code,
 not model instructions that a generated response can override.
 
 The React interface uses Tailwind utilities over shared light/dark theme tokens.
@@ -265,7 +269,9 @@ the private-network deployment passed acceptance; it never accepted a cloud
 clinical/demo decision. Existing storage data was preserved.
 
 The evidence collection is versioned demonstration material. Curated sources
-are not advertised as real-time searches. Supplied case assertions are
+are not advertised as real-time searches; searched records are labelled `LIVE` or
+`RECORDED`, stored alongside (never replacing) curated records, and carry
+`NOT_ASSESSED` patient applicability. Supplied case assertions are
 explicitly distinct from external claims. Real medical use would require
 independent clinical, regulatory, privacy and safety validation.
 

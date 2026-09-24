@@ -240,10 +240,51 @@ function structuredActivity(item: Data, type: string, role?: Role): ClinicalActi
   }
   return null;
 }
+/** What the research specialty searched and found, in plain words. Never hides a failed source. */
+export const SEARCH_FOUND: Record<string, string> = {
+  GUIDELINE: 'Guideline found', TRIAL_REGISTRATION: 'Trial found', PREPRINT: 'Preprint found',
+  SYSTEMATIC_REVIEW: 'Systematic review found', REVIEW: 'Review article found',
+  RANDOMIZED_TRIAL: 'Randomised trial found',
+};
+export function isSearchEvent(item: Data): boolean {
+  return item.retrieval === 'LIVE' || item.retrieval === 'RECORDED';
+}
+function searchActivity(item: Data, type: string): ClinicalActivity | null {
+  if (!isSearchEvent(item)) return null;
+  const summary = typeof item.summary === 'string' ? item.summary.trim() : '';
+  const recorded = item.retrieval === 'RECORDED';
+  if (type === 'toolstarted') {
+    return {
+      title: item.tool === 'fetch_abstract' ? 'Opening an abstract' : recorded ? 'Replaying a recorded public search' : 'Searching public sources',
+      summary: summary || 'The research specialty is searching public literature and trial registries.',
+      failure: false,
+    };
+  }
+  if (type === 'toolcompleted') {
+    const status = String(item.status ?? '');
+    const failed = status !== 'completed' || (Array.isArray(item.checks) && (item.checks as Data[]).some(check => check.status === 'unavailable'));
+    return {
+      title: status === 'refused' ? 'Search not sent' : status === 'unavailable' ? 'Search unavailable' : failed ? 'Search partly unavailable' : 'Search completed',
+      summary: summary || 'The search finished.',
+      failure: failed,
+    };
+  }
+  if (type === 'evidencefound') {
+    const via = typeof item.retrieved_via === 'string' ? ` · ${item.retrieved_via}` : '';
+    return {
+      title: `${SEARCH_FOUND[String(item.kind)] ?? 'Paper found'}${via}`,
+      summary: summary ? `${summary} — not yet appraised for this patient.` : 'A searched record is available; it is not yet appraised for this patient.',
+      failure: false,
+    };
+  }
+  return null;
+}
 export function clinicalActivity(item: Data, role?: Role): ClinicalActivity {
   const type = typeof item.type === 'string' ? normalized(item.type) : '';
   const communication = communicationActivity(item, type);
   if (communication) return communication;
+  const search = searchActivity(item, type);
+  if (search) return search;
   const raw = [item.summary, item.message, item.question, item.resolution, item.assessment, item.position, item.comment, item.detail].find(value => typeof value === 'string' && value.trim()) as string | undefined;
   const error = item.error === true ? raw || type : item.error ?? (/failed|failure|error|unavailable/.test(type) ? raw || type : null);
   if (error) return { title: 'Review needs attention', summary: clinicalError(error, typeof item.status_code === 'number' ? item.status_code : undefined), failure: true };
@@ -337,7 +378,7 @@ export function presentMeeting(meeting: Meeting | null): Meeting | null {
   }
   return {
     ...meeting, roles, case: clinicalCaseKind(meeting.case) ? { ...clinicalSourceData(meeting.case), dossier: recordData(meeting.case.dossier) } : clinicalData(meeting.case),
-    evidence: meeting.evidence.map(source => ({
+    evidence: meeting.evidence.map(source => source.retrieval === 'LIVE' || source.retrieval === 'RECORDED' ? source : ({
       ...source, title: clinicalText(source.title), passage: clinicalText(source.passage, ''),
       authority: clinicalText(source.authority), limitations: clinicalItems(source.limitations),
       scrutiny: Object.fromEntries(Object.entries(source.scrutiny).map(([key, value]) => [key, clinicalText(value)])),
