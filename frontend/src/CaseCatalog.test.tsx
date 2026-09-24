@@ -211,6 +211,7 @@ describe.each(['crc_wt_case.json', 'pancreatic_case.json'])('packaged %s full re
       const turns = buildVoiceTurns(voiceMeeting(), 'detailed');
       expect(turns.map(turn => turn.sequence)).toEqual(turns.map((_, index) => index + 1));
       expect(turns[0].agent_key).toBe('chair');
+      expect(turns[0].text).toContain('demonstration voice-enabled MDO rehearsal');
       expect(turns.filter(turn => turn.category === 'specialist')).toHaveLength(7);
       expect(turns.some(turn => turn.evidence_ids.includes('EV-VOICE'))).toBe(true);
       expect(turns.at(-1)?.category).toBe('checkpoint');

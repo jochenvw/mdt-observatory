@@ -55,7 +55,7 @@ export function buildVoiceTurns(meeting: Meeting, detail: 'concise' | 'detailed'
     agent_key: 'chair',
     speaker: 'MDO chair',
     category: 'chair',
-    text: `This is a synthetic voice-enabled MDO rehearsal. The decision question is ${caseQuestion(meeting)}`,
+    text: `This is a demonstration voice-enabled MDO rehearsal. The decision question is ${caseQuestion(meeting)}`,
     evidence_ids: [],
     timestamp_offset_seconds: 0,
   }];
