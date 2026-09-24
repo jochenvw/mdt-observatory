@@ -13,6 +13,7 @@ import { CaseTimeline, CompleteCaseRecord, isConversionCase, ManagementOptions }
 import { ROLE_LAYOUTS } from './roleLayouts';
 import { CaseSelection } from './CaseSelection';
 import { clinicalCaseKind } from './caseProfiles';
+import { VoiceMdoPanel } from './VoiceMdoPanel';
 import { documentStatus, Outcome, OutcomeBanner } from './Outcome';
 import { HOSPITAL, PatientBanner, Workstation } from './HospitalChrome';
 import { SimilarCases } from './SimilarCases';
@@ -138,6 +139,7 @@ export default function App() {
             <h1 className="mb-2 text-3xl">Multidisciplinary team review</h1>
             <p className="mb-5 max-w-3xl text-sm leading-7 text-cp-text-muted">Seven specialties review the same patient record independently, publish their own positions, and resolve the questions where those positions conflict. Every step below is recorded and inspectable; the decision remains with the clinical team.</p>
             <div className="mb-5 grid items-start gap-4 md:grid-cols-2"><Timeline meeting={meeting} />{meeting.plan ? <PlanPanel compact showPlan={() => setShowPlan(true)} meeting={meeting} role={activeRole} setRole={setReviewRole} comment={comments[activeRole] ?? ''} setComment={value => setComments(current => ({ ...current, [activeRole]: value }))} pending={pending} mutate={api.mutate} inspect={setEvidence} /> : <FrictionPanel meeting={meeting} pending={pending} followup={() => void api.mutate('followup', {})} />}</div>
+            <VoiceMdoPanel meeting={meeting} voice={config?.voice} evidence={meeting.evidence} inspect={setEvidence} submitContribution={api.submitVoiceContribution} />
             <div className="mb-5"><ConsensusPanel meeting={meeting} openRole={selectWorkspace} /></div>
             <div className="section-heading mb-5 flex items-center justify-between gap-4 [&_.eyebrow]:mb-1 [&>svg]:text-[var(--cp-role,var(--cp-accent))] meeting-section-heading"><div><p className="eyebrow">SPECIALTY POSITIONS</p><h2>{meeting.plan ? 'The specialties behind the plan' : 'Specialty reviews in progress'}</h2></div><button className="text-button" onClick={() => selectWorkspace('wall')}><Maximize2 size={15} />Open wall view</button></div>
             <div className="role-grid mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{ROLES.map(role => <RoleCard key={role} role={role} meeting={meeting} open={() => selectWorkspace(role)} />)}</div>
