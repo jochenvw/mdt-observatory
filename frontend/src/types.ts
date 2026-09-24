@@ -121,4 +121,40 @@ export interface Meeting {
   created_at: string;
   closed_at: string | null;
 }
-export interface Config { modes: Mode[]; auth_required: boolean; version: string }
+export interface VoiceAgent {
+  key: string;
+  label: string;
+  persona: string;
+  elevenlabs_voice_id: string;
+  preview_text: string;
+  role: Role | null;
+}
+export interface VoiceSettings {
+  provider: 'elevenlabs';
+  api_key_configured: boolean;
+  external_processing_disclosure: string;
+  fallback: 'browser_speech_synthesis';
+  agents: VoiceAgent[];
+}
+export interface VoiceTurn {
+  id: string;
+  sequence: number;
+  agent_key: string;
+  speaker: string;
+  category: 'chair' | 'specialist' | 'human' | 'checkpoint';
+  text: string;
+  evidence_ids: string[];
+  timestamp_offset_seconds: number;
+}
+export interface VoiceContributionInput {
+  transcript: string;
+  corrected_transcript?: string | null;
+  addressed_to?: string | null;
+  confirmation_mode: boolean;
+}
+export interface VoiceContributionAccepted {
+  meeting: Meeting;
+  routed_to: string[];
+  turns: VoiceTurn[];
+}
+export interface Config { modes: Mode[]; auth_required: boolean; version: string; voice?: VoiceSettings }

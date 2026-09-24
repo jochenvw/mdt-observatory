@@ -23,6 +23,18 @@ from mdt.engine import Conflict, Engine, NotFound, PersistenceFailure
 from mdt.models import Contract, Meeting, Role
 from mdt.store import Persistence, Store
 from mdt.telemetry import configure
+from mdt.voice import (
+    SpeechRequest,
+    VoiceContribution,
+    VoiceContributionAccepted,
+    VoiceDiscussion,
+    VoiceSynthesisError,
+    agent_by_key,
+    build_voice_discussion,
+    elevenlabs_audio_stream,
+    route_voice_contribution,
+    voice_settings,
+)
 
 COOKIE = "mdt_presenter"
 MAX_COMMAND_BYTES = 16384
@@ -237,6 +249,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
             "auth_required": bool(config.presenter_token),
             "version": "0.1.0",
             "disclaimer": "DEMONSTRATION SYSTEM. NOT FOR CLINICAL USE.",
+            "voice": voice_settings(config).model_dump(mode="json"),
         }
 
     @application.post("/api/auth")
@@ -319,6 +332,45 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     @application.get("/api/meetings/{meeting_id}", dependencies=protected)
     async def meeting(meeting_id: str, service: EngineDep) -> Meeting:
         return await service.load(meeting_id)
+
+    @application.get("/api/meetings/{meeting_id}/voice/discussion", dependencies=protected)
+    async def voice_discussion(
+        meeting_id: str, service: EngineDep, mode: Literal["concise", "detailed"] = "concise"
+    ) -> VoiceDiscussion:
+        return build_voice_discussion(await service.load(meeting_id), mode)
+
+    @application.post("/api/meetings/{meeting_id}/voice/contributions", dependencies=protected)
+    async def voice_contribution(
+        meeting_id: str, body: VoiceContribution, service: EngineDep
+    ) -> VoiceContributionAccepted:
+        updated = await service.voice_contribution(
+            meeting_id,
+            transcript=body.transcript,
+            corrected_transcript=body.corrected_transcript,
+            addressed_to=body.addressed_to,
+            confirmation_mode=body.confirmation_mode,
+        )
+        turns = route_voice_contribution(updated, body)
+        return VoiceContributionAccepted(
+            meeting=updated,
+            routed_to=[turn.agent_key for turn in turns if turn.category == "specialist"],
+            turns=turns,
+        )
+
+    @application.post("/api/voice/speech", dependencies=protected)
+    async def voice_speech(body: SpeechRequest) -> StreamingResponse:
+        if agent_by_key(body.agent_key) is None:
+            raise HTTPException(404, "Configured voice agent is not available.")
+        if not config.elevenlabs_api_key:
+            raise HTTPException(
+                503,
+                "ElevenLabs API key is not configured; use browser speech synthesis fallback.",
+            )
+        try:
+            stream = elevenlabs_audio_stream(config, body)
+            return StreamingResponse(stream, media_type="audio/mpeg")
+        except VoiceSynthesisError as exc:
+            raise HTTPException(exc.status_code, exc.detail) from exc
 
     @application.get("/api/meetings/{meeting_id}/stream", dependencies=protected)
     async def stream(meeting_id: str, service: EngineDep, request: Request) -> StreamingResponse:

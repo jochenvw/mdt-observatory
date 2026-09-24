@@ -676,6 +676,34 @@ class Engine:
                 self._spawn([memory.role], "followup")
             return meeting.model_copy(deep=True)
 
+    async def voice_contribution(
+        self,
+        meeting_id: str,
+        *,
+        transcript: str,
+        corrected_transcript: str | None,
+        addressed_to: str | None,
+        confirmation_mode: bool,
+    ) -> Meeting:
+        async with self.lock:
+            meeting = self._editable(meeting_id)
+            confirmed_text = (corrected_transcript or transcript).strip()
+            if not confirmed_text:
+                raise Conflict("Voice transcription cannot be empty.")
+            await self._event(
+                "VoiceContribution",
+                {
+                    "source": "human speech-to-text transcription",
+                    "transcript": transcript,
+                    "corrected_transcript": corrected_transcript,
+                    "confirmed_text": confirmed_text,
+                    "addressed_to": addressed_to,
+                    "confirmation_mode": confirmation_mode,
+                    "decision_status": "not an approved clinical decision",
+                },
+            )
+            return meeting.model_copy(deep=True)
+
     async def retry(self, meeting_id: str) -> Meeting:
         async with self.lock:
             meeting = self._editable(meeting_id, recovery=True)

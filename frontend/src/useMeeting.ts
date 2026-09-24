@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, request, requestEmpty } from './api';
 import { acceptSnapshot } from './helpers';
-import type { CaseSummary, Config, Meeting, Mode } from './types';
+import type { CaseSummary, Config, Meeting, Mode, VoiceContributionAccepted, VoiceContributionInput } from './types';
 import { clinicalError } from './presentation';
 
 export function useMeeting() {
@@ -108,6 +108,14 @@ export function useMeeting() {
     await requestEmpty('/room/clear', {});
     setMeeting(null);
   });
+  const submitVoiceContribution = (body: VoiceContributionInput) => run(async () => {
+    if (!meetingId) throw new Error('Start a case before joining the discussion.');
+    const accepted = await request<VoiceContributionAccepted>(
+      `/meetings/${encodeURIComponent(meetingId)}/voice/contributions`,
+      body,
+    );
+    setMeeting(current => current?.id === meetingId ? acceptSnapshot(current, accepted.meeting) : current);
+  });
   const authenticate = (token: string) => run(async () => {
     await requestEmpty('/auth', { token });
     setNeedsAuth(false);
@@ -127,7 +135,7 @@ export function useMeeting() {
 
   return {
     config, cases, meeting, loading, pending, error, needsAuth, connection,
-    mutate, start, authenticate, download, clearRoom,
+    mutate, start, authenticate, download, clearRoom, submitVoiceContribution,
     clearError: () => setError(null),
     dismissAuth: () => setNeedsAuth(false),
     reconnect: () => { setError(null); setGeneration(value => value + 1); },

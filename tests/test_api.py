@@ -218,6 +218,100 @@ def test_azure_not_silently_enabled_without_config(tmp_path: Path, monkeypatch: 
         assert client.get("/api/config").json()["modes"] == ["rehearsal"]
         assert client.post("/api/meetings", json={"mode": "azure"}).status_code == 422
 
+
+def test_voice_config_maps_agents_without_exposing_secret(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MDT_ELEVENLABS_API_KEY", "server-side-test-key")
+    settings = Settings(db_path=str(tmp_path / "voice.db"), step_delay=0)
+    with TestClient(create_app(settings)) as client:
+        voice = client.get("/api/config").json()["voice"]
+        assert voice["provider"] == "elevenlabs"
+        assert voice["api_key_configured"] is True
+        assert "server-side-test-key" not in json.dumps(voice)
+        assert voice["fallback"] == "browser_speech_synthesis"
+        agents = voice["agents"]
+        assert len(agents) == 8
+        assert {agent["label"] for agent in agents} == {
+            "MDO chair",
+            "Medical oncologist",
+            "Radiologist",
+            "Pathologist",
+            "Surgeon",
+            "Radiation oncologist",
+            "Specialist nurse",
+            "Clinical-trial specialist",
+        }
+        voice_ids = [agent["elevenlabs_voice_id"] for agent in agents]
+        assert len(set(voice_ids)) == len(voice_ids)
+        assert all(agent["preview_text"] for agent in agents)
+
+
+def test_voice_discussion_is_sequenced_and_stops_at_human_checkpoint(tmp_path: Path) -> None:
+    settings = Settings(db_path=str(tmp_path / "voice-flow.db"), step_delay=0)
+    with TestClient(create_app(settings)) as client:
+        started = client.post("/api/meetings", json={"mode": "rehearsal"})
+        assert started.status_code == 201
+        meeting = drain(client)
+        response = client.get(f"/api/meetings/{meeting['id']}/voice/discussion?mode=detailed")
+        assert response.status_code == 200
+        discussion = response.json()
+        assert discussion["mode"] == "detailed"
+        turns = discussion["turns"]
+        assert turns[0]["agent_key"] == "chair"
+        assert "decision question" in turns[0]["text"]
+        assert [turn["sequence"] for turn in turns] == list(range(1, len(turns) + 1))
+        assert len([turn for turn in turns if turn["category"] == "specialist"]) == 7
+        assert turns[-1]["category"] == "checkpoint"
+        assert "No agent may approve" in turns[-1]["text"]
+
+
+def test_voice_contribution_is_audited_and_routed_without_decision_approval(
+    tmp_path: Path,
+) -> None:
+    settings = Settings(db_path=str(tmp_path / "voice-contribution.db"), step_delay=0)
+    with TestClient(create_app(settings)) as client:
+        started = client.post("/api/meetings", json={"mode": "rehearsal"})
+        assert started.status_code == 201
+        meeting = drain(client)
+        response = client.post(
+            f"/api/meetings/{meeting['id']}/voice/contributions",
+            json={
+                "transcript": "radiology, please reconsider the new scan",
+                "corrected_transcript": "Radiologist, please reconsider the new scan.",
+                "addressed_to": "radiologist",
+                "confirmation_mode": True,
+            },
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["routed_to"] == ["radiology"]
+        assert payload["turns"][0]["agent_key"] == "chair"
+        latest = payload["meeting"]
+        event = latest["events"][-1]
+        assert event["type"] == "VoiceContribution"
+        assert event["payload"]["source"] == "human speech-to-text transcription"
+        assert event["payload"]["decision_status"] == "not an approved clinical decision"
+        assert latest["phase"] == meeting["phase"]
+
+
+def test_voice_speech_requires_server_side_key_and_never_accepts_unknown_voice(
+    tmp_path: Path,
+) -> None:
+    settings = Settings(db_path=str(tmp_path / "voice-speech.db"), step_delay=0)
+    with TestClient(create_app(settings)) as client:
+        missing = client.post(
+            "/api/voice/speech",
+            json={"agent_key": "chair", "text": "Preview the chair voice."},
+        )
+        assert missing.status_code == 503
+        assert "browser speech synthesis fallback" in missing.json()["detail"]
+        unknown = client.post(
+            "/api/voice/speech",
+            json={"agent_key": "invented", "text": "Preview an unknown voice."},
+        )
+        assert unknown.status_code == 404
+
 def room_view(client: TestClient) -> dict[str, Any] | None:
     """The snapshot the room channel delivers to every open participant screen."""
     service = client.app.state.engine

@@ -9,8 +9,10 @@ import { CaseClinical, CaseTimeline, CompleteCaseRecord, isConversionCase, Manag
 import { clinicalCaseKind, clinicalProfile } from './caseProfiles';
 import { presentMeeting } from './presentation';
 import { Specialist } from './Specialist';
+import { ROLE_META } from './ui';
 import { ROLES } from './types';
 import type { CaseSummary, Data, Meeting, Role } from './types';
+import { agentRouteHint, buildVoiceTurns, VoiceMdoPanel } from './VoiceMdoPanel';
 
 const cases: CaseSummary[] = [
   { id: 'CASE-MDT-CRC-BRAF-2026-001', title: 'Colorectal BRAF conversion review', patient_label: 'Original demonstration case', stage: 'Stage IV', question: 'Review local clearance.' },
@@ -135,6 +137,103 @@ describe.each(['crc_wt_case.json', 'pancreatic_case.json'])('packaged %s full re
     expect(markup).not.toMatch(/liver-segment-map|liver-lesion-table|BRAF V600E plasma VAF|NINE BASELINE SITES/);
     expect(markup.indexOf(`data-testid="clinical-source-${role}-caveats"`)).toBeLessThan(markup.indexOf(`data-testid="clinical-source-${role}-source_sections"`));
     expect(markup).toContain(`<details data-testid="clinical-source-${role}-source_sections"`);
+  });
+
+  describe('voice-enabled MDO panel', () => {
+    function voiceMeeting(): Meeting {
+      const meeting = meetingFor({
+        id: 'CASE-VOICE-001',
+        pseudonym: 'Synthetic voice case',
+        question: 'Should the team discuss local treatment?',
+      }, 'radiology');
+      meeting.phase = 'TARGETED_DISCUSSION';
+      meeting.evidence = [{
+        id: 'EV-VOICE',
+        title: 'Synthetic evidence source',
+        url: '',
+        date: '2026',
+        authority: 'Demo',
+        region: 'EU',
+        kind: 'synthetic',
+        access: 'PUBLIC_FULL_TEXT',
+        patient_match: 'PARTIAL',
+        passage: 'Synthetic evidence passage.',
+        limitations: ['Demo only'],
+        scrutiny: {},
+        synthetic: true,
+        retrieval: 'CURATED',
+      }];
+      meeting.frictions = [{
+        id: 'imaging',
+        question: 'Clarify interval imaging before local treatment.',
+        roles: ['radiology', 'surgery'],
+        missing: ['scan review'],
+        blocking: true,
+        resolved: false,
+        resolution: null,
+      }];
+      meeting.roles = Object.fromEntries(ROLES.map(role => [role, {
+        ...meeting.roles.radiology!,
+        role,
+        label: role,
+        position: {
+          role,
+          case_id: 'CASE-VOICE-001',
+          position: `${role} concise conclusion.`,
+          confidence: 0.7,
+          autonomy: 'REVIEW',
+          claims: [{ claim: `${role} claim`, evidence_ids: ['EV-VOICE'] }],
+          uncertainties: ['Human review remains required'],
+          recommendation: `${role} recommends conditional discussion`,
+          questions_for_mdt: [],
+          human_intervention: false,
+          provenance: ['EV-VOICE'],
+          stance: 'CONDITIONAL',
+          friction_keys: [],
+          trace: { assessment: '', observations: [], hypothesis: '', uncertainties: [], evidence_checking: [], next_action: '' },
+        },
+      }]));
+      return meeting;
+    }
+
+    const voice = {
+      provider: 'elevenlabs' as const,
+      api_key_configured: false,
+      external_processing_disclosure: 'Only selected caption text is sent server-side when enabled.',
+      fallback: 'browser_speech_synthesis' as const,
+      agents: [
+        { key: 'chair', label: 'MDO chair', persona: 'chair', elevenlabs_voice_id: 'v1', preview_text: 'Chair preview', role: null },
+        ...ROLES.map(role => ({ key: role === 'protocol' ? 'radiation_oncology' : role === 'patient' ? 'specialist_nurse' : role === 'research' ? 'clinical_trial' : role, label: ROLE_META[role].person, persona: role, elevenlabs_voice_id: `voice-${role}`, preview_text: `${role} preview`, role })),
+      ],
+    };
+
+    it('builds sequenced captions, evidence references and a human checkpoint', () => {
+      const turns = buildVoiceTurns(voiceMeeting(), 'detailed');
+      expect(turns.map(turn => turn.sequence)).toEqual(turns.map((_, index) => index + 1));
+      expect(turns[0].agent_key).toBe('chair');
+      expect(turns.filter(turn => turn.category === 'specialist')).toHaveLength(7);
+      expect(turns.some(turn => turn.evidence_ids.includes('EV-VOICE'))).toBe(true);
+      expect(turns.at(-1)?.category).toBe('checkpoint');
+      expect(turns.at(-1)?.text).toContain('not approved clinical decisions');
+    });
+
+    it('renders accessible playback, interruption and correction controls', () => {
+      const markup = renderToStaticMarkup(<VoiceMdoPanel meeting={voiceMeeting()} voice={voice} evidence={voiceMeeting().evidence} inspect={() => {}} submitContribution={async () => true} />);
+      expect(markup).toContain('LISTEN TO MDO');
+      expect(markup).toContain('Stop speaking');
+      expect(markup).toContain('Join discussion');
+      expect(markup).toContain('Push-to-talk');
+      expect(markup).toContain('Corrected transcript');
+      expect(markup).toContain('Jump to chair final summary');
+      expect(markup).toContain('Browser voice fallback');
+      expect(markup).toContain('Evidence EV-VOICE');
+    });
+
+    it('routes named human questions to specialists before falling back to the chair', () => {
+      expect(agentRouteHint('Radiologist, please review the new scan')).toBe('radiology');
+      expect(agentRouteHint('Can the surgeon clarify feasibility?')).toBe('surgery');
+      expect(agentRouteHint('General question for the meeting')).toBe('chair');
+    });
   });
   it('preserves every nested dossier section, narrative and management alternative without inventing charts', () => {
     const envelope = JSON.parse(readFileSync(new URL(`../../src/mdt/dossiers/${file}`, import.meta.url), 'utf8')) as { case: Data };
