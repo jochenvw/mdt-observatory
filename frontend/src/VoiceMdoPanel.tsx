@@ -43,7 +43,7 @@ function roleForAgent(agentKey: string): Role | undefined {
 }
 
 function caseQuestion(meeting: Meeting): string {
-  const patient = String(meeting.case.pseudonym ?? 'the synthetic patient');
+  const patient = String(meeting.case.pseudonym ?? 'the demonstration patient');
   const question = String(meeting.case.question ?? 'the MDT decision question');
   return `${patient}: ${question}`;
 }
