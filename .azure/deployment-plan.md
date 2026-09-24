@@ -1,6 +1,42 @@
 # MDT Observatory deployment plan
 
-Status: Deployed - review-findings release live
+Status: Deployed - outcome-communications release live
+
+Released 2026-09-24: image
+`sha256:475df9c0c5064f5b73b0aa65803fc86e29d68af8ecfaa7016fffb9516b805617`, revision
+`mdt-observatory-vnet--r20260924114834-c699d3`, 100% traffic, one healthy replica,
+built from `c1cc203`. The release script verified TLS, health, readiness, frontend,
+protected API, private Blob and no mounts. After the release, a live Azure meeting
+(WT case) started and progressed with the model with no role errors. The rehearsal
+smoke test was not run so it would not interrupt that meeting.
+
+Previous status: Validated - outcome-communications release (awaiting azure-deploy)
+
+## Section 7: Validation Proof - outcome-communications release (2026-09-24)
+
+Scope: PR #23 (issues #14, #16, #17) plus merged PR #22 (comparable historical cases),
+at `main` `c1cc203` (clean tree). App-only change: no edits to `infra/`, `Dockerfile`,
+`azure.yaml` or `scripts/` since the validated review-findings release. The new
+setting `cohort_minimum_subgroup` has a default of 15. Outcome drafting uses the
+existing `AZURE_OPENAI_*` settings and the OpenAI User role. The dossier split
+(#14) adds `meeting-static/` blobs in the same `mdt-state` container, covered by the
+container-scoped Blob Data Contributor role. Legacy snapshots stay readable. The
+ETag gate is unchanged.
+
+| Command | Result |
+| --- | --- |
+| `az bicep build --file infra/main.bicep` | Compiled clean, exit 0 |
+| `az account show` | Subscription `e3825c9a-4bce-43e1-899e-1610156c9383`, Enabled |
+| `git log -- infra Dockerfile azure.yaml scripts` | Last change `89f9f67`, which predates the validated release |
+| Static role review of `infra/modules/*.bicep` | Exactly AcrPull `7f951dda`, Storage Blob Data Contributor `ba92f5b4`, Cognitive Services OpenAI User `5e0bd9bd`; no Owner or Contributor |
+| Gates in `resources.bicep` | `minReplicas: 1`, `maxReplicas: 1`, `activeRevisionsMode: 'Multiple'`, storage `publicNetworkAccess: 'Disabled'`, `allowSharedKeyAccess: false` |
+| `uv run --frozen ruff check .` / `mypy` | Pass / pass (15 files) |
+| `MDT_BROWSER_TESTS=1 uv run --frozen pytest -q` | 307 passed (including browser tests) |
+| `npx vitest run` / `tsc --noEmit` / `npm run build` | 157 passed / pass / built |
+| GitHub Actions on PR #23 | `test` pass |
+
+Release per recipe: run `deploy.ps1 -Stage Build` to get a fresh immutable digest,
+then `-Stage Release`.
 
 Released 2026-09-23: image
 `sha256:b0ccd8481bba9f7e872529e40a2287f2be0d686b8345499c8fece47f3303d2fd`, revision
