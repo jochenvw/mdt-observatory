@@ -177,7 +177,7 @@ def _role_agent(role: Role) -> VoiceAgent:
 
 
 def _case_label(meeting: Meeting) -> str:
-    patient = meeting.case.get("pseudonym", "the synthetic patient")
+    patient = meeting.case.get("pseudonym", "the demonstration patient")
     question = meeting.case.get("question", "the MDT decision question")
     return f"{patient}: {question}"
 
@@ -193,7 +193,7 @@ def build_voice_discussion(
             speaker="MDO chair",
             category="chair",
             text=(
-                "This is a voice-enabled synthetic MDO rehearsal. "
+                "This is a voice-enabled demonstration MDO rehearsal. "
                 f"The decision question is {_case_label(meeting)}"
             ),
             timestamp_offset_seconds=0,

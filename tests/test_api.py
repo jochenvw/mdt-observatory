@@ -260,6 +260,8 @@ def test_voice_discussion_is_sequenced_and_stops_at_human_checkpoint(tmp_path: P
         turns = discussion["turns"]
         assert turns[0]["agent_key"] == "chair"
         assert "decision question" in turns[0]["text"]
+        assert "demonstration MDO rehearsal" in turns[0]["text"]
+        assert "synthetic" not in turns[0]["text"].lower()
         assert [turn["sequence"] for turn in turns] == list(range(1, len(turns) + 1))
         assert len([turn for turn in turns if turn["category"] == "specialist"]) == 7
         assert turns[-1]["category"] == "checkpoint"
