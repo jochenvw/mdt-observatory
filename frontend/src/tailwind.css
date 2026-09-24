@@ -191,3 +191,11 @@ html[data-theme="dark"] {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Printing an outcome document prints the document only, never the surrounding workspace. */
+@media print {
+  body * { visibility: hidden; }
+  .printable-document, .printable-document * { visibility: visible; }
+  .printable-document { position: absolute; inset: 0 auto auto 0; width: 100%; max-width: none; border: 0; box-shadow: none; padding: 0; background: #fff; color: #000; }
+  .no-print { display: none !important; }
+}

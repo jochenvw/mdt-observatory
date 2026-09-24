@@ -116,6 +116,40 @@ is durable — it is written through the normal persistence path as a `RoomClear
 audit event on the meeting and restored on startup — so a restart cannot return a
 closed case to the participants' screens, while an uncleared room still resumes.
 
+## Outcome communications
+
+Once the decision is captured, the engine drafts two documents from the recorded
+outcome: a patient summary and a letter for the GP or referring colleague. The
+runtime (`communications.py`) is separate from the chair state machine. It reads
+a role-scoped copy of the record: plan, conditions and frictions for both
+documents. The patient summary also gets the patient-perspective position and
+priorities. The letter also gets every specialist position, concurrences,
+objections and metadata for the evidence the plan cites. It never reads raw
+events, tool traces or prompts.
+
+- **Skills, not scripts.** `skills/patient_summary.md` and `skills/clinician_letter.md`
+  are case-agnostic writing instructions. The patient summary uses the dossier's
+  `preferred_language` (en, de, it or nl); an unsupported language is refused
+  rather than guessed. The letter is always British English.
+- **Always a model, never a fallback.** Documents are drafted by the configured
+  Azure OpenAI deployment in both rehearsal and live meetings, with structured
+  output and no tools. Without a model, or on any failure, the document is FAILED
+  with a visible reason, and no scripted text is substituted.
+- **Validation.** A draft that cites unknown record references, contains URLs or
+  identifiers, is in the wrong language or has the wrong section order is rejected.
+- **Advisory checks and one self-revision.** Readability uses a per-language
+  formula: Flesch (EN), Amstad (DE), Gulpease (IT) or Flesch–Douma (NL). Other
+  checks cover length, sentence length, unexplained terms, numbers absent from
+  the record and plan coverage. If a target is missed, the model revises exactly
+  once; any remaining findings are shown to the reviewer.
+- **Human approval.** Only a named reviewer can approve, and approval binds to
+  the plan version and document revision. Requesting changes redrafts the
+  document as a new revision and revokes any earlier approval.
+- **Lifecycle.** A new case cannot start while a document is drafting, which is
+  bounded by the 300-second deadline. On restart, an interrupted draft becomes
+  FAILED with a recorded reason. Clearing the room keeps the documents in the
+  persisted meeting and export.
+
 ## Workflow invariants
 
 - Only one mutating analysis round can run in the active room.
@@ -131,6 +165,9 @@ closed case to the participants' screens, while an uncleared room still resumes.
 - Uncertainty, missing full protocol access and conditional eligibility survive
   convergence; agreement is not represented as clinical certainty.
 - Interrupted analysis is marked ERROR after restart and can be retried.
+- Outcome documents are drafted only after the decision is captured, only from
+  the recorded outcome, and are never shared as approved without a named,
+  version-bound human approval.
 
 ## Deliberate trade-offs
 

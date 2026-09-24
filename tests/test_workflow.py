@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import FakeDrafter
 
 from mdt.agents import analyze
 from mdt.case_registry import get_case
@@ -65,6 +66,11 @@ async def test_selected_case_complete_workflow_and_durable_source(
             await engine.concur(started.id, role, "Reviewed conditional demonstration proposal.")
     assert meeting.phase == Phase.DECISION_CAPTURED
     assert all(v.plan_version == meeting.plan.version for v in meeting.concurrences.values())
+    await settled(engine)
+    patient = meeting.communications["patient"]
+    assert patient.status == "DRAFT"
+    assert patient.language == definition.case["preferred_language"]
+    assert meeting.communications["clinician"].language == "en"
     saved = meeting.model_dump()
     await engine.close()
     restored = Store(str(tmp_path / "mdt.db"))
@@ -113,9 +119,9 @@ async def test_added_case_rejects_cross_case_evidence_before_proposal(
     await engine.close()
 
 
-def make_engine(tmp_path: Path) -> Engine:
+def make_engine(tmp_path: Path, drafter: FakeDrafter | None = None) -> Engine:
     settings = Settings(db_path=str(tmp_path / "mdt.db"), step_delay=0)
-    return Engine(Store(settings.db_path), settings, analyze)
+    return Engine(Store(settings.db_path), settings, analyze, drafter=drafter or FakeDrafter())
 
 
 async def settled(engine: Engine) -> None:
@@ -212,6 +218,8 @@ async def test_full_crc_dossier_survives_proposal_capture_and_restart(tmp_path: 
     for role in Role:
         if role not in state.concurrences:
             await engine.concur(meeting_id, role, "Reviewed this version.", state.plan.version)
+    await settled(engine)
+    assert {item.status for item in state.communications.values()} == {"DRAFT"}
     expected = state.model_dump()
     await engine.close()
     restored = make_engine(tmp_path)
@@ -312,6 +320,7 @@ async def test_closed_decisions_are_immutable(tmp_path: Path) -> None:
         await engine.steer(meeting_id, Role.RADIOLOGY, "Change the growth assessment.")
     with pytest.raises(Conflict):
         await engine.object(meeting_id, Role.RADIOLOGY, "Change the decision.")
+    await settled(engine)
     await engine.start("rehearsal")
     await settled(engine)
     assert engine.get(meeting_id).phase == Phase.DECISION_CAPTURED
@@ -626,4 +635,250 @@ async def test_known_evidence_is_referenced_not_copied_into_events(tmp_path: Pat
     assert kept["evidence"] == changed, "differing records stay in full for the audit trail"
     # Regression bound: 51.1 MB before references; 37.9 MB measured after.
     assert store.written < 40_000_000
+    await engine.close()
+
+# ------------------------------------------------------------ outcome communications
+async def decide(engine: Engine, case_id: str | None = None) -> str:
+    """Drive a case to a captured decision without letting drafting run yet."""
+    if case_id is None:
+        meeting_id = await proposal(engine)
+    else:
+        guidance = dict(ADDITIONAL_CASES)[case_id]
+        started = await engine.start("rehearsal", case_id)
+        await settled(engine)
+        await engine.followup(started.id)
+        await settled(engine)
+        await engine.steer(started.id, Role.RADIOLOGY, guidance)
+        await settled(engine)
+        meeting_id = started.id
+    state = engine.get(meeting_id)
+    assert state.plan is not None
+    for role in Role:
+        if role not in state.concurrences:
+            await engine.concur(meeting_id, role, "Reviewed.", state.plan.version)
+    assert state.phase == Phase.DECISION_CAPTURED
+    return meeting_id
+
+
+async def test_outcome_documents_are_drafted_only_after_the_decision(tmp_path: Path) -> None:
+    drafter = FakeDrafter()
+    engine = make_engine(tmp_path, drafter)
+    meeting_id = await proposal(engine)
+    state = engine.get(meeting_id)
+    assert state.plan is not None
+    assert not state.communications
+    with pytest.raises(Conflict):
+        await engine.regenerate_communication(meeting_id, "patient", reviewer="Dr A", role=None)
+    for role in Role:
+        if role not in state.concurrences:
+            await engine.concur(meeting_id, role, "Reviewed.", state.plan.version)
+    assert {item.status for item in state.communications.values()} == {"DRAFTING"}
+    assert {item.plan_version for item in state.communications.values()} == {state.plan.version}
+    closed = [event.type for event in state.events].index("CaseClosed")
+    assert "CommunicationDrafted" not in [event.type for event in state.events[:closed]]
+    await settled(engine)
+    assert {item.status for item in state.communications.values()} == {"DRAFT"}
+    assert {item.generated_by for item in state.communications.values()} == {"azure"}
+    assert state.phase == Phase.DECISION_CAPTURED
+    patient = next(call for call in drafter.calls if call.audience == "patient")
+    clinician = next(call for call in drafter.calls if call.audience == "clinician")
+    # The patient runtime sees only the patient perspective, never other specialists.
+    assert set(patient.positions) == {Role.PATIENT.value}
+    assert not patient.evidence and not patient.concurrences and not patient.objections
+    assert set(clinician.positions) == {role.value for role in Role}
+    assert patient.language == "en" and clinician.language == "en"
+    assert all(ref in patient.refs for ref in patient.required_refs)
+    await engine.close()
+
+
+async def test_patient_documents_follow_the_case_language(tmp_path: Path) -> None:
+    drafter = FakeDrafter()
+    engine = make_engine(tmp_path, drafter)
+    for case_id, language in (
+        ("CASE-MDT-CRC-WT-2026-002", "de"), ("CASE-MDT-PDAC-PERIOP-2026-003", "it"),
+    ):
+        drafter.calls.clear()
+        meeting_id = await decide(engine, case_id)
+        await settled(engine)
+        state = engine.get(meeting_id)
+        assert state.communications["patient"].language == language
+        assert state.communications["clinician"].language == "en"
+        assert {call.audience: call.language for call in drafter.calls} == {
+            "patient": language, "clinician": "en",
+        }
+    await engine.close()
+
+
+async def test_approval_is_human_named_and_bound_to_plan_and_revision(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path)
+    meeting_id = await decide(engine)
+    state = engine.get(meeting_id)
+    assert state.plan is not None
+    version = state.plan.version
+    with pytest.raises(Conflict, match="completed draft"):
+        await engine.approve_communication(
+            meeting_id, "patient", reviewer="Dr A", role=None, plan_version=version, revision=1
+        )
+    await settled(engine)
+    with pytest.raises(Conflict, match="Name the reviewing"):
+        await engine.approve_communication(
+            meeting_id, "patient", reviewer="   ", role=None, plan_version=version, revision=1
+        )
+    with pytest.raises(Conflict, match="plan version"):
+        await engine.approve_communication(
+            meeting_id, "patient", reviewer="Dr A", role=None, plan_version=version - 1,
+            revision=1,
+        )
+    with pytest.raises(Conflict, match="newer draft"):
+        await engine.approve_communication(
+            meeting_id, "patient", reviewer="Dr A", role=None, plan_version=version, revision=2
+        )
+    await engine.approve_communication(
+        meeting_id, "patient", reviewer=" Dr A ", role=Role.ONCOLOGY, plan_version=version,
+        revision=1, comment="Plain and accurate.",
+    )
+    patient = state.communications["patient"]
+    assert patient.status == "APPROVED"
+    assert (patient.approved_by, patient.approved_role, patient.approved_revision) == (
+        "Dr A", Role.ONCOLOGY, 1,
+    )
+    assert patient.reviews[-1].action == "approve"
+    assert state.communications["clinician"].status == "DRAFT"
+    with pytest.raises(Conflict, match="Already approved"):
+        await engine.approve_communication(
+            meeting_id, "patient", reviewer="Dr A", role=None, plan_version=version, revision=1
+        )
+    with pytest.raises(NotFound):
+        await engine.approve_communication(
+            meeting_id, "family", reviewer="Dr A", role=None,  # type: ignore[arg-type]
+            plan_version=version, revision=1,
+        )
+    assert state.phase == Phase.DECISION_CAPTURED
+    await engine.close()
+
+
+async def test_requested_changes_redraft_and_revoke_approval(tmp_path: Path) -> None:
+    drafter = FakeDrafter()
+    engine = make_engine(tmp_path, drafter)
+    meeting_id = await decide(engine)
+    await settled(engine)
+    state = engine.get(meeting_id)
+    assert state.plan is not None
+    version = state.plan.version
+    await engine.approve_communication(
+        meeting_id, "clinician", reviewer="Dr B", role=None, plan_version=version, revision=1
+    )
+    with pytest.raises(Conflict, match="Describe the change"):
+        await engine.request_communication_changes(
+            meeting_id, "clinician", reviewer="Dr B", role=None, plan_version=version,
+            revision=1, comment="  ",
+        )
+    await engine.request_communication_changes(
+        meeting_id, "clinician", reviewer="Dr B", role=None, plan_version=version, revision=1,
+        comment="Name the surgeon who will follow up.",
+    )
+    letter = state.communications["clinician"]
+    assert (letter.status, letter.revision, letter.approved_by) == ("DRAFTING", 2, None)
+    with pytest.raises(Conflict):
+        await engine.approve_communication(
+            meeting_id, "clinician", reviewer="Dr B", role=None, plan_version=version,
+            revision=1,
+        )
+    await settled(engine)
+    assert letter.status == "DRAFT"
+    assert drafter.calls[-1].requested_changes == ["Name the surgeon who will follow up."]
+    assert drafter.calls[-1].revision == 2
+    assert [review.action for review in letter.reviews] == ["approve", "request_changes"]
+    assert state.phase == Phase.DECISION_CAPTURED
+    assert state.plan.version == version
+    await engine.close()
+
+
+async def test_failed_drafts_stay_visible_and_can_be_regenerated(tmp_path: Path) -> None:
+    drafter = FakeDrafter()
+    drafter.error = "Language model is not configured."
+    engine = make_engine(tmp_path, drafter)
+    meeting_id = await decide(engine)
+    await settled(engine)
+    state = engine.get(meeting_id)
+    patient = state.communications["patient"]
+    assert patient.status == "FAILED"
+    assert patient.error and "No scripted text was substituted" in patient.error
+    assert not patient.sections and patient.checks is None
+    assert "CommunicationFailed" in [event.type for event in state.events]
+    assert state.plan is not None
+    with pytest.raises(Conflict):
+        await engine.approve_communication(
+            meeting_id, "patient", reviewer="Dr A", role=None,
+            plan_version=state.plan.version, revision=1,
+        )
+    drafter.error = None
+    await engine.regenerate_communication(meeting_id, "patient", reviewer="Dr A", role=None)
+    assert patient.status == "DRAFTING" and patient.revision == 2
+    await settled(engine)
+    assert patient.status == "DRAFT" and patient.error is None and patient.sections
+    await engine.close()
+
+
+async def test_default_drafter_fails_visibly_without_a_model(tmp_path: Path) -> None:
+    settings = Settings(db_path=str(tmp_path / "mdt.db"), step_delay=0)
+    engine = Engine(Store(settings.db_path), settings, analyze)
+    meeting_id = await decide(engine)
+    await settled(engine)
+    for item in engine.get(meeting_id).communications.values():
+        assert item.status == "FAILED"
+        assert item.error and "No scripted text was substituted" in item.error
+        assert not item.sections
+    await engine.close()
+
+
+async def test_new_meeting_waits_for_drafting_and_restart_fails_open_drafts(
+    tmp_path: Path,
+) -> None:
+    drafter = FakeDrafter()
+    drafter.gate = asyncio.Event()
+    engine = make_engine(tmp_path, drafter)
+    meeting_id = await decide(engine)
+    await asyncio.sleep(0)
+    with pytest.raises(Conflict, match="finish drafting"):
+        await engine.start("rehearsal")
+    await engine.close()
+    restored = make_engine(tmp_path)
+    state = restored.get(meeting_id)
+    assert {item.status for item in state.communications.values()} == {"FAILED"}
+    assert all(
+        item.error and "Server restarted" in item.error for item in state.communications.values()
+    )
+    assert state.events[-1].type == "CommunicationFailed"
+    await restored.regenerate_communication(meeting_id, "clinician", reviewer="Dr B", role=None)
+    await settled(restored)
+    assert state.communications["clinician"].status == "DRAFT"
+    await restored.close()
+    again = make_engine(tmp_path)
+    assert again.get(meeting_id).communications["clinician"].status == "DRAFT"
+    await again.close()
+
+
+async def test_clearing_the_room_keeps_outcome_documents_in_the_record(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path)
+    meeting_id = await decide(engine)
+    await settled(engine)
+    documents = engine.get(meeting_id).model_dump()["communications"]
+    await engine.clear()
+    with pytest.raises(NotFound):
+        await engine.regenerate_communication(meeting_id, "patient", reviewer="Dr A", role=None)
+    assert (await engine.load(meeting_id)).model_dump()["communications"] == documents
+    await engine.close()
+
+
+@pytest.mark.parametrize("case_id", [None, *(item[0] for item in ADDITIONAL_CASES)])
+async def test_captured_plans_never_repeat_conditions_or_actions(
+    tmp_path: Path, case_id: str | None,
+) -> None:
+    engine = make_engine(tmp_path)
+    meeting_id = await decide(engine, case_id)
+    plan = engine.get(meeting_id).plan
+    assert plan is not None
+    assert len(plan.conditions) == len(set(plan.conditions))
+    assert len(plan.actions) == len(set(plan.actions))
     await engine.close()

@@ -13,6 +13,7 @@ CASE: dict[str, Any] = {
     "id": _D["case"]["case_id"],
     "demo": True,
     "patient": "CRC case · 59-year-old woman",
+    "preferred_language": "en",
     "pseudonym": "CRC-2026-001",
     "age": _D["patient"]["age"],
     "diagnosis": (

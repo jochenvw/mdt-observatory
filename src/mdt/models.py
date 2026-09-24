@@ -152,6 +152,99 @@ class Event(Contract):
     timestamp: str = Field(default_factory=utcnow)
 
 
+Audience = Literal["patient", "clinician"]
+CommunicationStatus = Literal["DRAFTING", "DRAFT", "CHANGES_REQUESTED", "APPROVED", "FAILED"]
+AUDIENCES: tuple[Audience, ...] = ("patient", "clinician")
+
+
+class CommunicationSection(Contract):
+    """One ordered section; `source_refs` name the record entries it derives from."""
+
+    id: str
+    heading: str
+    paragraphs: list[str] = Field(default_factory=list)
+    bullets: list[str] = Field(default_factory=list)
+    columns: list[str] = Field(default_factory=list)
+    rows: list[list[str]] = Field(default_factory=list)
+    source_refs: list[str] = Field(default_factory=list)
+
+
+class GlossaryTerm(Contract):
+    term: str
+    meaning: str
+
+
+class CommunicationCitation(Contract):
+    evidence_id: str
+    title: str
+    authority: str
+    access: str
+    verification: str
+
+
+class CommunicationChecks(Contract):
+    """Advisory quality signals shown to the reviewer; they never block approval."""
+
+    word_count: int
+    word_target: tuple[int, int]
+    sentence_count: int
+    average_sentence_words: float
+    longest_sentence_words: int
+    reading_ease: float
+    reading_formula: str = "Flesch reading ease"
+    grade_level: float | None = None
+    reading_target: str
+    language: str = "en"
+    detected_language: str | None = None
+    unexplained_terms: list[str] = Field(default_factory=list)
+    uncovered_refs: list[str] = Field(default_factory=list)
+    unsupported_numbers: list[str] = Field(default_factory=list)
+    unresolved_citations: list[str] = Field(default_factory=list)
+    unknown_refs: list[str] = Field(default_factory=list)
+
+
+class CommunicationReview(Contract):
+    action: Literal["approve", "request_changes", "regenerate"]
+    reviewer: str
+    role: Role | None = None
+    actor: Literal["human"] = "human"
+    comment: str = ""
+    plan_version: int
+    revision: int
+    timestamp: str = Field(default_factory=utcnow)
+
+
+class Communication(Contract):
+    """A post-consensus document for one audience, bound to a plan version.
+
+    Drafts come from a role runtime; only a named human reviewer can approve one.
+    Status never changes the meeting phase.
+    """
+
+    audience: Audience
+    plan_version: int
+    revision: int = 1
+    status: CommunicationStatus = "DRAFTING"
+    generated_by: Literal["rehearsal", "azure"]
+    author_role: str
+    language: str = "en"
+    title: str = ""
+    sections: list[CommunicationSection] = Field(default_factory=list)
+    glossary: list[GlossaryTerm] = Field(default_factory=list)
+    questions_to_ask: list[str] = Field(default_factory=list)
+    citations: list[CommunicationCitation] = Field(default_factory=list)
+    checks: CommunicationChecks | None = None
+    reviews: list[CommunicationReview] = Field(default_factory=list)
+    requested_changes: list[str] = Field(default_factory=list)
+    approved_by: str | None = None
+    approved_role: Role | None = None
+    approved_at: str | None = None
+    approved_revision: int | None = None
+    error: str | None = None
+    created_at: str = Field(default_factory=utcnow)
+    updated_at: str = Field(default_factory=utcnow)
+
+
 class Meeting(Contract):
     id: str
     phase: Phase = Phase.IDLE
@@ -170,5 +263,7 @@ class Meeting(Contract):
     error: str | None = None
     created_at: str = Field(default_factory=utcnow)
     closed_at: str | None = None
+    communications: dict[str, Communication] = Field(default_factory=dict)
+    """Post-consensus patient summary and clinician letter, keyed by audience."""
     cleared: bool = False
     """The orchestrator returned the room to standby; the record stays reviewable."""

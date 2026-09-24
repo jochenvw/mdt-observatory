@@ -70,10 +70,37 @@ Operational errors do not appear as the next clinical question.
 | 1:00 | Compare three management options and the conditional proposal | Local treatment now, further systemic therapy, or deferred local treatment; no automatic surgery decision |
 | 1:05 | Concur from the roles awaiting human review | Version-bound human sign-offs arrive centrally |
 | 1:15 | Open the captured decision and export | Complete provenance, evidence and human contributions |
+| 1:20 | Click **Open outcome &amp; letters** on the consensus banner | "Consensus reached", the numbered plan forward, retained conditions and who signed off (clinician versus demonstration policy) |
+| 1:25 | Open the patient summary, then the colleague letter | A gentle plain-language summary in the patient's language with a glossary; an English clinician-to-clinician letter with tables |
+| 1:30 | Enter a reviewer name; Approve, or Request changes with a comment | Named, version-bound approval; a change request redrafts the document and revokes earlier approval |
 
 Alternate ending: object to a proposal with a substantive concern. The chair
 reopens discussion. Request targeted follow-up, inspect the updated proposal,
 and give fresh human concurrence. Previous votes do not silently transfer.
+
+## Closing: outcome and letters
+
+When the decision is captured, both outcome documents start drafting on their
+own; the banner on the central and chair screens shows their status. Drafting
+takes about 30–90 seconds per document and always uses the configured language
+model, including in the scripted demonstration. Nothing is scripted: if the
+model is unavailable, the document card says so, and **Regenerate draft** tries
+again. Starting another case waits until drafting finishes.
+
+- **Patient summary.** Written in the patient's recorded preferred language:
+  English for CRC-2026-001, German for CRC-2026-002 and Italian for
+  PDAC-2026-003. It explains gently, defines terms in a glossary and lists
+  questions to ask.
+- **Colleague letter.** British English with standard terminology: diagnosis,
+  treatment to date, discussion, outcome, conditions, actions and owners, and
+  what the patient has been told.
+- **Automatic checks.** Readability (per-language formula), length, sentence
+  length and grounding against the record are advisory. They never approve a
+  document; only a named clinician does, and approval binds to the plan version
+  and revision.
+
+Point out that the documents cite only the recorded meeting and never add a date,
+dose or recommendation the MDT did not record.
 
 ## Language to use
 

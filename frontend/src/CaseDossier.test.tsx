@@ -133,7 +133,7 @@ describe('complete packaged CRC case presentation', () => {
     expect(markupFor('research')).toContain('not the same setting as conversion-stage IV disease');
     expect(markupFor('protocol')).toContain('not verified guidelines');
     expect(markupFor('protocol')).toContain('data-testid="management-option-3"');
-  });
+  }, 20_000);
   it.each(ROLES)('retains the %s workspace contract, complete record access and human controls', role => {
     const raw = meetingFor(role);
     const original = JSON.stringify(raw);

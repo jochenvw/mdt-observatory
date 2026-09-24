@@ -6,6 +6,7 @@
     "pseudonym": "CRC-2026-002",
     "age": 58,
     "patient": "CRC case · 58-year-old man",
+    "preferred_language": "de",
     "source_sections": [
       {
         "id": "source_introduction",
@@ -3427,6 +3428,7 @@
     },
     "patient": {
       "workspace": "Neuropathy, caregiver responsibilities and meaningful control",
+      "language": "German-speaking; grew up in Germany and prefers spoken and written information in German. Understands everyday Dutch and English, but not medical terms.",
       "question": "How should permanent neuropathy, fatigue, independence, caregiving and acceptable surgical burden shape shared discussion of uncertain durable control?",
       "caveats": [
         "Fictional demonstration only; not clinical treatment instructions.",

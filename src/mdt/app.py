@@ -20,7 +20,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 from mdt.case_registry import case_ids, get_case
 from mdt.config import Settings
 from mdt.engine import Conflict, Engine, NotFound, PersistenceFailure
-from mdt.models import Contract, Meeting, Role
+from mdt.models import Audience, Contract, Meeting, Role
 from mdt.store import Persistence, Store
 from mdt.telemetry import configure
 
@@ -39,6 +39,7 @@ class CaseSummary(Contract):
     patient_label: str
     stage: str
     question: str
+    preferred_language: str = "en"
 
 
 class Steering(Contract):
@@ -50,6 +51,19 @@ class Vote(Contract):
     role: Role
     plan_version: int = Field(ge=1)
     comment: str = Field(default="", max_length=2000)
+
+
+class CommunicationReviewBody(Contract):
+    reviewer: str = Field(min_length=1, max_length=80)
+    role: Role | None = None
+    plan_version: int = Field(ge=1)
+    revision: int = Field(ge=1)
+    comment: str = Field(default="", max_length=2000)
+
+
+class CommunicationRegenerate(Contract):
+    reviewer: str = Field(min_length=1, max_length=80)
+    role: Role | None = None
 
 
 class MemoryAction(Contract):
@@ -303,6 +317,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
                 patient_label=case["pseudonym"],
                 stage=case["stage"],
                 question=case["question"],
+                preferred_language=str(case.get("preferred_language") or "en"),
             )
             for identifier in case_ids()
             for case in (get_case(identifier).case,)
@@ -349,6 +364,39 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     @application.post("/api/meetings/{meeting_id}/object", dependencies=protected)
     async def objection(meeting_id: str, body: Vote, service: EngineDep) -> Meeting:
         return await service.object(meeting_id, body.role, body.comment, body.plan_version)
+
+    @application.post(
+        "/api/meetings/{meeting_id}/communications/{audience}/approve", dependencies=protected
+    )
+    async def approve_communication(
+        meeting_id: str, audience: Audience, body: CommunicationReviewBody, service: EngineDep,
+    ) -> Meeting:
+        return await service.approve_communication(
+            meeting_id, audience, reviewer=body.reviewer, role=body.role,
+            plan_version=body.plan_version, revision=body.revision, comment=body.comment,
+        )
+
+    @application.post(
+        "/api/meetings/{meeting_id}/communications/{audience}/request-changes",
+        dependencies=protected,
+    )
+    async def request_communication_changes(
+        meeting_id: str, audience: Audience, body: CommunicationReviewBody, service: EngineDep,
+    ) -> Meeting:
+        return await service.request_communication_changes(
+            meeting_id, audience, reviewer=body.reviewer, role=body.role,
+            plan_version=body.plan_version, revision=body.revision, comment=body.comment,
+        )
+
+    @application.post(
+        "/api/meetings/{meeting_id}/communications/{audience}/regenerate", dependencies=protected
+    )
+    async def regenerate_communication(
+        meeting_id: str, audience: Audience, body: CommunicationRegenerate, service: EngineDep,
+    ) -> Meeting:
+        return await service.regenerate_communication(
+            meeting_id, audience, reviewer=body.reviewer, role=body.role
+        )
 
     @application.post("/api/meetings/{meeting_id}/memory", dependencies=protected)
     async def memory(meeting_id: str, body: MemoryAction, service: EngineDep) -> Meeting:
