@@ -21,6 +21,8 @@ from mdt.models import Contract
 Availability = Literal["AVAILABLE", "PENDING", "STALE", "MISSING"]
 Verdict = Literal["EXACT", "NEAR", "DIFFERENT", "NOT_RECORDED"]
 
+# Default suppression threshold; deployments override it with
+# MDT_COHORT_MINIMUM_SUBGROUP (see Settings.cohort_minimum_subgroup).
 MINIMUM_SUBGROUP = 15
 CASE_SAMPLE_LIMIT = 12
 LABEL = "Descriptive, not advisory"
@@ -736,8 +738,12 @@ def _comparable_cases(
     matched: Sequence[tuple[CohortCase, dict[str, Verdict]]],
     enabled: Sequence[Criterion],
 ) -> list[ComparableCase]:
+    # The dataset is generated site by site, so taking the head would show one
+    # hospital only. A stable hash keeps the sample deterministic while spreading
+    # it across the sites and periods the variation section describes.
+    sample = sorted(matched, key=lambda item: _unit(item[0].id, "sample"))
     cases = []
-    for record, verdicts in matched[:CASE_SAMPLE_LIMIT]:
+    for record, verdicts in sample[:CASE_SAMPLE_LIMIT]:
         exact = [item.label for item in enabled if verdicts[item.key] == "EXACT"]
         near = [
             f"{item.label}: {', '.join(record.characteristics.get(item.key, []))} "

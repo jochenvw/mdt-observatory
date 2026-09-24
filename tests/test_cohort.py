@@ -199,6 +199,7 @@ def test_small_cohorts_are_suppressed_rather_than_described() -> None:
 def test_case_level_exploration_stays_de_identified_and_explains_each_match() -> None:
     result = build_cohort(profile_for(), case_id=CASE_ID, include_cases=True)
     assert result.cases and len(result.cases) <= 12
+    assert len({record.hospital for record in result.cases}) > 1, "the sample spans sites"
     identifiers = {record.id for record in cohort_dataset()}
     for record in result.cases:
         assert record.id in identifiers and record.id.startswith("SYN-")

@@ -628,6 +628,7 @@ async def test_known_evidence_is_referenced_not_copied_into_events(tmp_path: Pat
     assert store.written < 40_000_000
     await engine.close()
 
+
 async def test_cohort_reference_is_recorded_without_deciding_the_meeting(tmp_path: Path) -> None:
     engine = make_engine(tmp_path)
     meeting_id = await proposal(engine)
