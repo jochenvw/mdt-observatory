@@ -249,6 +249,7 @@ def test_voice_config_maps_agents_without_exposing_secret(
         voice_ids = [agent["elevenlabs_voice_id"] for agent in agents]
         assert len(set(voice_ids)) == len(voice_ids)
         assert all(agent["preview_text"] for agent in agents)
+        assert "demonstration MDO" in agents[0]["preview_text"]
 
 
 def test_voice_discussion_is_sequenced_and_stops_at_human_checkpoint(tmp_path: Path) -> None:
@@ -339,6 +340,7 @@ def test_voice_speech_requires_server_side_key_and_never_accepts_unknown_voice(
             json={"agent_key": "invented", "text": "Preview an unknown voice."},
         )
         assert unknown.status_code == 404
+
 
 def room_view(client: TestClient) -> dict[str, Any] | None:
     """The snapshot the room channel delivers to every open participant screen."""

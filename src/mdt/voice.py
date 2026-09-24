@@ -81,7 +81,9 @@ VOICE_AGENTS: tuple[VoiceAgent, ...] = (
         label="MDO chair",
         persona="Calm meeting chair who sequences speakers and stops at human review.",
         elevenlabs_voice_id="21m00Tcm4TlvDq8ikWAM",
-        preview_text="I will chair the synthetic MDO and stop at the human decision checkpoint.",
+        preview_text=(
+            "I will chair the demonstration MDO and stop at the human decision checkpoint."
+        ),
     ),
     VoiceAgent(
         key="oncology",
