@@ -1,6 +1,27 @@
 # MDT Observatory deployment plan
 
-Status: Deployed - agent-question UX release live
+Status: Deployed - live research search release live. Image
+`acrmdtgy76frdpub6io.azurecr.io/mdt-observatory@sha256:c268c8ce599156c1d368dd3c6bf0ad3eee44177ee023c392a6d307f29d0c35d0`,
+revision `mdt-observatory-vnet--r20260924143617-581d80` at 100% traffic, one healthy replica, `/healthz` 200,
+`/api/config` 1.0.0, bundle serves Research operations. In-container `httpx2` egress check with the app User-Agent:
+richtlijnendatabase.nl, euclinicaltrials.eu, www.ebi.ac.uk, eutils.ncbi.nlm.nih.gov and clinicaltrials.gov all 200.
+
+## Section 7: Validation Proof - live research search release (2026-09-24)
+
+Scope: `ce8c523..6ae9201` (#18). Adds research-only public literature/trial search (`src/mdt/literature.py`),
+recorded rehearsal fixtures, Research operations UI and docs. No infra, RBAC, storage or identity changes. New
+runtime needs outbound HTTPS to five public hosts; infra defines no route table, firewall or NSG egress rules.
+
+| Command | Result |
+| --- | --- |
+| `git diff ce8c523 6ae9201 -- infra Dockerfile azure.yaml scripts` | Only `scripts/record_searches.py` (offline fixture tool, not deployed) |
+| `az bicep build --file infra/main.bicep` | Exit 0 |
+| `az account show` | Enabled, approved subscription |
+| `uv lock --check` / `ruff` / `mypy` | Pass / pass / pass |
+| `MDT_BROWSER_TESTS=1 pytest` | 341 passed |
+| `vitest` / `tsc` / `npm run build` | 165 passed / clean / built |
+
+Previous status: Deployed - agent-question UX release live
 
 Released 2026-09-24: image `sha256:4507c8c480db5f8fb5fb4df07cc7ac6ccccc2cdc38d9cc237cefc3a4912ce78d`, revision
 `mdt-observatory-vnet--r20260924124251-0a16e4`, 100% traffic, one healthy replica; `/healthz` 200,
