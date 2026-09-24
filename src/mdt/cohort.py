@@ -102,7 +102,7 @@ DECISIONS: tuple[tuple[str, str], ...] = (
     ("clinical_trial_enrolment", "Clinical-trial enrolment"),
     ("radiation_therapy", "Radiation therapy"),
     ("best_supportive_care", "Best supportive care"),
-    ("defer_to_later_mdt", "Defer to a later MDO"),
+    ("defer_to_later_mdt", "Defer to a later MDT"),
 )
 DECISION_LABELS = dict(DECISIONS)
 RESPONSES: tuple[tuple[str, str], ...] = (
@@ -588,7 +588,9 @@ def automatic_criteria(characteristics: dict[str, Characteristic]) -> list[str]:
     ]
 
 
-def _subgroups(records: Sequence[CohortCase], category: str, attribute: str) -> list[Subgroup]:
+def _subgroups(
+    records: Sequence[CohortCase], category: str, attribute: str, minimum: int
+) -> list[Subgroup]:
     names: list[str] = []
     for record in records:
         value = getattr(record, attribute)
@@ -597,7 +599,7 @@ def _subgroups(records: Sequence[CohortCase], category: str, attribute: str) -> 
     groups = []
     for name in sorted(names):
         members = [record for record in records if getattr(record, attribute) == name]
-        if len(members) < MINIMUM_SUBGROUP:
+        if len(members) < minimum:
             continue
         count = sum(1 for record in members if record.decision == category)
         groups.append(Subgroup(
@@ -607,7 +609,7 @@ def _subgroups(records: Sequence[CohortCase], category: str, attribute: str) -> 
     return groups
 
 
-def _decisions(matched: Sequence[CohortCase]) -> list[DecisionSummary]:
+def _decisions(matched: Sequence[CohortCase], minimum: int) -> list[DecisionSummary]:
     total = len(matched)
     summaries = []
     for category, label in DECISIONS:
@@ -616,9 +618,9 @@ def _decisions(matched: Sequence[CohortCase]) -> list[DecisionSummary]:
         summaries.append(DecisionSummary(
             category=category, label=label, count=count, denominator=total,
             percentage=_percentage(count, total), interval_low=low, interval_high=high,
-            by_hospital=_subgroups(matched, category, "hospital"),
-            by_country=_subgroups(matched, category, "country"),
-            by_period=_subgroups(matched, category, "period"),
+            by_hospital=_subgroups(matched, category, "hospital", minimum),
+            by_country=_subgroups(matched, category, "country", minimum),
+            by_period=_subgroups(matched, category, "period", minimum),
         ))
     return sorted(summaries, key=lambda item: (-item.count, item.label))
 
@@ -638,7 +640,7 @@ def _outcomes(matched: Sequence[CohortCase]) -> list[OutcomeSummary]:
             note="Recorded observation only; not attributed to any board decision.",
         ))
     for measure, label, values in (
-        ("rediscussed", "Re-discussed at a later MDO",
+        ("rediscussed", "Re-discussed at a later MDT",
          [record for record in matched if record.rediscussed]),
         ("discontinued", "Treatment discontinuation recorded",
          [record for record in evaluated if record.discontinued]),
@@ -898,7 +900,7 @@ def build_cohort(
         sources=cohort_sources(),
         hospitals=len(HOSPITALS),
         countries=sorted({country for _, country, _, _, _ in HOSPITALS}),
-        decisions=[] if suppressed else _decisions(records),
+        decisions=[] if suppressed else _decisions(records, minimum),
         outcomes=[] if suppressed else _outcomes(records),
         intervals=[] if suppressed else _intervals(records),
         variation=[] if suppressed else _variation(records, minimum),

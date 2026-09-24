@@ -173,6 +173,14 @@ def test_hospital_variation_is_observational_and_suppresses_small_sites() -> Non
         assert site.site == "Sites below the minimum subgroup size"
         assert site.country == "Multiple"
         assert not site.decisions
+    # A configured minimum governs every subgroup, including the breakdowns
+    # reported inside a decision category.
+    raised = build_cohort(profile_for(), case_id=CASE_ID, minimum=30)
+    for site in raised.variation:
+        assert site.suppressed or site.cases >= 30
+    for decision in raised.decisions:
+        for group in (*decision.by_hospital, *decision.by_country, *decision.by_period):
+            assert group.denominator >= 30
 
 
 def test_small_cohorts_are_suppressed_rather_than_described() -> None:
