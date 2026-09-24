@@ -163,6 +163,15 @@ def agent_by_key(agent_key: str) -> VoiceAgent | None:
     return next((agent for agent in VOICE_AGENTS if agent.key == agent_key), None)
 
 
+def validate_speech_request(settings: Settings, request: SpeechRequest) -> None:
+    if agent_by_key(request.agent_key) is None:
+        raise VoiceSynthesisError(404, "Configured voice agent is not available.")
+    if not settings.elevenlabs_api_key:
+        raise VoiceSynthesisError(
+            503, "ElevenLabs API key is not configured; use browser speech synthesis fallback."
+        )
+
+
 def _role_agent(role: Role) -> VoiceAgent:
     return next(agent for agent in VOICE_AGENTS if agent.role == role)
 
@@ -330,13 +339,9 @@ def route_voice_contribution(meeting: Meeting, contribution: VoiceContribution) 
 async def elevenlabs_audio_stream(
     settings: Settings, request: SpeechRequest
 ) -> AsyncIterator[bytes]:
+    validate_speech_request(settings, request)
     agent = agent_by_key(request.agent_key)
-    if agent is None:
-        raise VoiceSynthesisError(404, "Configured voice agent is not available.")
-    if not settings.elevenlabs_api_key:
-        raise VoiceSynthesisError(
-            503, "ElevenLabs API key is not configured; use browser speech synthesis fallback."
-        )
+    assert agent is not None
     url = (
         f"{settings.elevenlabs_base_url.rstrip('/')}/text-to-speech/"
         f"{agent.elevenlabs_voice_id}/stream"

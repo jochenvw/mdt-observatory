@@ -157,4 +157,4 @@ export interface VoiceContributionAccepted {
   routed_to: string[];
   turns: VoiceTurn[];
 }
-export interface Config { modes: Mode[]; auth_required: boolean; version: string; voice?: VoiceSettings }
+export interface Config { modes: Mode[]; auth_required: boolean; version: string; voice: VoiceSettings }

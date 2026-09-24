@@ -29,10 +29,10 @@ from mdt.voice import (
     VoiceContributionAccepted,
     VoiceDiscussion,
     VoiceSynthesisError,
-    agent_by_key,
     build_voice_discussion,
     elevenlabs_audio_stream,
     route_voice_contribution,
+    validate_speech_request,
     voice_settings,
 )
 
@@ -359,14 +359,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
 
     @application.post("/api/voice/speech", dependencies=protected)
     async def voice_speech(body: SpeechRequest) -> StreamingResponse:
-        if agent_by_key(body.agent_key) is None:
-            raise HTTPException(404, "Configured voice agent is not available.")
-        if not config.elevenlabs_api_key:
-            raise HTTPException(
-                503,
-                "ElevenLabs API key is not configured; use browser speech synthesis fallback.",
-            )
         try:
+            validate_speech_request(config, body)
             stream = elevenlabs_audio_stream(config, body)
             return StreamingResponse(stream, media_type="audio/mpeg")
         except VoiceSynthesisError as exc:
