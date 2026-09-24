@@ -1,6 +1,26 @@
 # MDT Observatory deployment plan
 
-Status: Deployed - outcome-communications release live
+Status: Deployed - v1.0.0 release live
+
+Released 2026-09-24: image `sha256:2db9ab2f317e6dfb634bf3d4d623a6e0f9cacf0a1fb0500a0dd652362005e12a`, revision`nmdt-observatory-vnet--r20260924121145-062eda`, 100% traffic, one healthy replica; release script
+verification passed and `/api/config` reports `1.0.0`.
+
+Previous status: Deployed - outcome-communications release live
+
+## Section 7: Validation Proof - v1.0.0 release (2026-09-24)
+
+Scope: `c1cc203..ec51ee0` (tag `v1.0.0`) changes only the version string, in
+`pyproject.toml`, `uv.lock` and `src/mdt/app.py`. No infra, RBAC, network or storage
+change.
+
+| Command | Result |
+| --- | --- |
+| `git diff c1cc203 v1.0.0 -- infra Dockerfile azure.yaml scripts` | Empty |
+| `az bicep build --file infra/main.bicep` | Exit 0 |
+| `az account show` | Enabled, approved subscription |
+| `uv lock --check` / `ruff` / `mypy` / `pytest tests/test_api.py` | Pass / pass / pass / 17 passed |
+
+Release record: outcome-communications release
 
 Released 2026-09-24: image
 `sha256:475df9c0c5064f5b73b0aa65803fc86e29d68af8ecfaa7016fffb9516b805617`, revision
