@@ -1,6 +1,17 @@
 # MDT Observatory deployment plan
 
-Status: Validated - review-findings release (PR #15, `main` at `6dd6eb2`)
+Status: Deployed - review-findings release live
+
+Released 2026-09-23: image
+`sha256:b0ccd8481bba9f7e872529e40a2287f2be0d686b8345499c8fece47f3303d2fd`, revision
+`mdt-observatory-vnet--r20260924053901-761320`, 100% traffic, one healthy replica, built
+from `410341d` (clean tree). Release script verified TLS, health, readiness, frontend,
+protected API, private Blob and no mounts. Acceptance: `scripts/smoke.py` rehearsal
+reached `DECISION_CAPTURED` (7 roles, 316 events) and live Azure mode reached
+`DECISION_CAPTURED` (7 roles, 301 events, meeting `00564870-...`); 1920x1080 browser
+pass over all ten views with no console errors. Live RBAC re-confirmed (AcrPull,
+Storage Blob Data Contributor on `mdt-state`, Cognitive Services OpenAI User). Room
+returned to standby.
 
 ## Section 7: Validation Proof - review-findings release (2026-09-23)
 
