@@ -180,5 +180,12 @@ room; do not run it during someone else's presentation.
   silently deleting history.
 - Memory is explicit, role/clinician scoped and labeled by category. Forgetting
   removes a nudge from the active meeting, not historical clinical/audit records.
+- Comparable historical cases are descriptive, not advisory. No governed registry
+  is connected, so the cohort is a deterministic synthetic dataset, labeled as
+  such on screen and in exports, and is never clinical evidence. It never ranks,
+  prefers or recommends a treatment, cohorts and site subgroups below the
+  configured minimum size (`MDT_COHORT_MINIMUM_SUBGROUP`, default 15) are
+  suppressed, and a quoted cohort finding is recorded as context that decides
+  nothing.
 - No real clinician impersonation, stereotyping, EHR integration or raw
   chain-of-thought exposure.

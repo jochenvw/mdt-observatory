@@ -8,12 +8,14 @@ from typing import Any, Self
 
 from pydantic import TypeAdapter, model_validator
 
+from mdt.cohort import CohortProfile
 from mdt.models import Claim, Contract, Evidence, Memory, Role
 from mdt.scenario import (
     APPLICABILITY_CLAIMS,
     APPLICABILITY_CONDITION,
     ASSESSMENTS,
     CASE,
+    COHORT_PROFILE,
     EVIDENCE,
     FRICTIONS,
     HYPOTHESIS,
@@ -95,6 +97,8 @@ class CasePackage(Contract):
     role_contexts: dict[Role, dict[str, Any]]
     runtime: CaseRuntime
     external_evidence_ids: list[str]
+    # Characteristics this case offers to the descriptive similar-case comparison.
+    cohort_profile: CohortProfile = CohortProfile()
 
     @model_validator(mode="after")
     def complete_case(self) -> Self:
@@ -117,6 +121,7 @@ class CaseDefinition:
     memories: list[Memory]
     labels: dict[Role, str]
     runtime: CaseRuntime
+    cohort_profile: CohortProfile
 
     def role_evidence(self, role: Role) -> list[Evidence]:
         record_url = f"case://{self.case['id']}/{role.value}"
@@ -149,7 +154,8 @@ def _catalog() -> dict[str, CaseDefinition]:
     )
     definitions = {
         str(CASE["id"]): CaseDefinition(
-            CASE, ROLE_CONTEXTS, EVIDENCE, MEMORIES, ROLE_LABELS, packaged_runtime
+            CASE, ROLE_CONTEXTS, EVIDENCE, MEMORIES, ROLE_LABELS, packaged_runtime,
+            CohortProfile.model_validate(COHORT_PROFILE),
         ),
     }
     directory = files("mdt").joinpath("dossiers")
@@ -215,6 +221,7 @@ def _catalog() -> dict[str, CaseDefinition]:
         ]
         definitions[case_id] = CaseDefinition(
             package.case, package.role_contexts, records, memories, labels, package.runtime,
+            package.cohort_profile,
         )
     return definitions
 

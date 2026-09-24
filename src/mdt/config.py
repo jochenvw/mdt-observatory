@@ -17,3 +17,5 @@ class Settings(BaseSettings):
     max_meetings: int = Field(default=100, ge=1, le=10000)
     azure_max_concurrent_roles: int = Field(default=3, ge=1, le=7)
     azure_request_interval_seconds: float = Field(default=20, ge=0, le=60, allow_inf_nan=False)
+    # Smallest matched subgroup that may be described; smaller cohorts are suppressed.
+    cohort_minimum_subgroup: int = Field(default=15, ge=5, le=500)

@@ -13,6 +13,7 @@ import { CaseTimeline, CompleteCaseRecord, isConversionCase, ManagementOptions }
 import { ROLE_LAYOUTS } from './roleLayouts';
 import { CaseSelection } from './CaseSelection';
 import { clinicalCaseKind } from './caseProfiles';
+import { SimilarCases } from './SimilarCases';
 
 type Drafts = Partial<Record<Role, string>>;
 const MODE_LABEL: Record<Mode, string> = { rehearsal: 'Scripted demonstration', azure: 'Live AI review' };
@@ -135,6 +136,7 @@ export default function App() {
             <div className="section-heading mb-5 flex items-center justify-between gap-4 [&_.eyebrow]:mb-1 [&>svg]:text-[var(--cp-role,var(--cp-accent))] meeting-section-heading"><div><p className="eyebrow">SPECIALTY POSITIONS</p><h2>{meeting.plan ? 'The specialties behind the plan' : 'Specialty reviews in progress'}</h2></div><button className="text-button" onClick={() => selectWorkspace('wall')}><Maximize2 size={15} />Open wall view</button></div>
             <div className="role-grid mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{ROLES.map(role => <RoleCard key={role} role={role} meeting={meeting} open={() => selectWorkspace(role)} />)}</div>
             <MeetingSignals meeting={meeting} inspect={setEvidence} />
+            {typeof meeting.case.id === 'string' && <SimilarCases caseId={meeting.case.id} pending={pending} quote={(reference, criteria, resolved) => void api.mutate('cohort-reference', { reference, criteria, resolved })} />}
             <details className="my-5 rounded-xl border border-cp-border bg-cp-surface p-4"><summary>Case timeline and treatment history</summary><CaseTimeline data={meeting.case} /></details>
             {(isConversionCase(meeting.case) || clinicalCaseKind(meeting.case)) && <ManagementOptions data={meeting.case} />}
           </>}
