@@ -3758,5 +3758,88 @@
     "CRC-PROVENC3",
     "CRC-CAIRO3",
     "CRC-PLCRC"
-  ]
+  ],
+  "cohort_profile": {
+    "characteristics": {
+      "cancer_type": {
+        "values": [
+          "Colorectal"
+        ],
+        "display": "Colorectal adenocarcinoma"
+      },
+      "primary_site": {
+        "values": [
+          "Left-sided colon"
+        ],
+        "display": "Sigmoid (left-sided) colon"
+      },
+      "stage": {
+        "values": [
+          "Stage IV"
+        ],
+        "display": "cT3 cN1 M1a · Stage IVA"
+      },
+      "metastatic_sites": {
+        "values": [
+          "Liver"
+        ],
+        "display": "Liver-only metastatic disease (11 baseline sites)"
+      },
+      "metastatic_burden": {
+        "values": [],
+        "status": "PENDING",
+        "display": "Not classified",
+        "reason": "the uncertain 7 mm segment IVa focus and invisible deposits are not characterised, so the recorded burden is incomplete.",
+        "awaiting": "Characterisation of the 7 mm segment IVa focus would allow burden matching.",
+        "pending_values": [
+          "Multifocal"
+        ]
+      },
+      "molecular_profile": {
+        "values": [
+          "RAS wild type",
+          "pMMR / MSS",
+          "HER2 not amplified"
+        ],
+        "display": "KRAS/NRAS wild type, BRAF V600E wild type, pMMR/MSS, HER2 not amplified"
+      },
+      "performance_status": {
+        "values": [
+          "ECOG 1"
+        ],
+        "display": "ECOG 0 baseline → 1 at toxicity review"
+      },
+      "age_band": {
+        "values": [
+          "50–59"
+        ],
+        "display": "50–59"
+      },
+      "previous_lines": {
+        "values": [
+          "1 previous line"
+        ],
+        "display": "One systemic line (eight cycles)"
+      },
+      "prior_procedures": {
+        "values": [],
+        "status": "MISSING",
+        "display": "None recorded",
+        "reason": "the sigmoid primary is in situ and no prior oncological procedure is recorded.",
+        "awaiting": "A recorded procedure history would allow procedure matching."
+      },
+      "comorbidities": {
+        "values": [
+          "Hypertension"
+        ],
+        "display": "Hypertension; BMI 29 with mild fatty liver disease"
+      },
+      "decision_point": {
+        "values": [
+          "Post-induction local-treatment review"
+        ],
+        "display": "Post-induction local-treatment review"
+      }
+    }
+  }
 }
