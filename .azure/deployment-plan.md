@@ -1,6 +1,26 @@
 # MDT Observatory deployment plan
 
-Status: Deployed - v1.0.0 release live
+Status: Deployed - agent-question UX release live
+
+Released 2026-09-24: image `sha256:4507c8c480db5f8fb5fb4df07cc7ac6ccccc2cdc38d9cc237cefc3a4912ce78d`, revision
+`mdt-observatory-vnet--r20260924124251-0a16e4`, 100% traffic, one healthy replica; `/healthz` 200,
+`/api/config` reports `1.0.0` and the served bundle contains the agent-question UI.
+
+Previous status: Deployed - v1.0.0 release live
+
+## Section 7: Validation Proof - agent-question UX release (2026-09-24)
+
+Scope: `ec51ee0..ce8c523`. Changes are to the frontend specialist workspace, imaging-review guidance
+matching in `src/mdt/agents.py`, the tests and `docs/demo.md`. There are no infra, RBAC, network or storage changes.
+
+| Command | Result |
+| --- | --- |
+| `git diff ec51ee0 ce8c523 -- infra Dockerfile azure.yaml scripts` | Empty |
+| `az bicep build --file infra/main.bicep` | Exit 0 |
+| `az account show` | Enabled, approved subscription |
+| `uv lock --check` / `ruff` / `mypy` | Pass / pass / pass |
+| `MDT_BROWSER_TESTS=1 pytest` | 310 passed |
+| `vitest` / `tsc` / `npm run build` | 158 passed / clean / built |
 
 Released 2026-09-24: image `sha256:2db9ab2f317e6dfb634bf3d4d623a6e0f9cacf0a1fb0500a0dd652362005e12a`, revision`nmdt-observatory-vnet--r20260924121145-062eda`, 100% traffic, one healthy replica; release script
 verification passed and `/api/config` reports `1.0.0`.
