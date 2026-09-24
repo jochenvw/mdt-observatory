@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlparse
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -18,9 +18,10 @@ from pydantic import Field
 from starlette.middleware.base import RequestResponseEndpoint
 
 from mdt.case_registry import case_ids, get_case
+from mdt.cohort import CohortResult, build_cohort
 from mdt.config import Settings
 from mdt.engine import Conflict, Engine, NotFound, PersistenceFailure
-from mdt.models import Contract, Meeting, Role
+from mdt.models import Audience, Contract, Meeting, Role
 from mdt.store import Persistence, Store
 from mdt.telemetry import configure
 from mdt.voice import (
@@ -37,6 +38,7 @@ from mdt.voice import (
 )
 
 COOKIE = "mdt_presenter"
+VERSION = "1.0.0"
 MAX_COMMAND_BYTES = 16384
 
 
@@ -51,6 +53,7 @@ class CaseSummary(Contract):
     patient_label: str
     stage: str
     question: str
+    preferred_language: str = "en"
 
 
 class Steering(Contract):
@@ -62,6 +65,27 @@ class Vote(Contract):
     role: Role
     plan_version: int = Field(ge=1)
     comment: str = Field(default="", max_length=2000)
+
+
+class CommunicationReviewBody(Contract):
+    reviewer: str = Field(min_length=1, max_length=80)
+    role: Role | None = None
+    plan_version: int = Field(ge=1)
+    revision: int = Field(ge=1)
+    comment: str = Field(default="", max_length=2000)
+
+
+class CommunicationRegenerate(Contract):
+    reviewer: str = Field(min_length=1, max_length=80)
+    role: Role | None = None
+
+
+class CohortReference(Contract):
+    """One cohort finding a clinician chooses to quote in the discussion."""
+
+    reference: str = Field(min_length=1, max_length=120)
+    criteria: list[str] | None = Field(default=None, max_length=12)
+    resolved: list[str] = Field(default_factory=list, max_length=12)
 
 
 class MemoryAction(Contract):
@@ -169,7 +193,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
 
     application = FastAPI(
         title="MDT Observatory",
-        version="0.1.0",
+        version=VERSION,
         lifespan=lifespan,
         docs_url=None,
         redoc_url=None,
@@ -247,7 +271,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
         return {
             "modes": modes,
             "auth_required": bool(config.presenter_token),
-            "version": "0.1.0",
+            "version": VERSION,
             "disclaimer": "DEMONSTRATION SYSTEM. NOT FOR CLINICAL USE.",
             "voice": voice_settings(config).model_dump(mode="json"),
         }
@@ -316,10 +340,43 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
                 patient_label=case["pseudonym"],
                 stage=case["stage"],
                 question=case["question"],
+                preferred_language=str(case.get("preferred_language") or "en"),
             )
             for identifier in case_ids()
             for case in (get_case(identifier).case,)
         ]
+
+    @application.get("/api/cases/{case_id}/cohort", dependencies=protected)
+    async def cohort(
+        case_id: str,
+        criteria: Annotated[list[str] | None, Query(max_length=12)] = None,
+        resolved: Annotated[list[str] | None, Query(max_length=12)] = None,
+        include_cases: bool = False,
+    ) -> CohortResult:
+        """Descriptive comparison against the governed historical cohort.
+
+        Omitting `criteria` preselects the clinically meaningful characteristics the
+        current case actually has; supplying it selects exactly those criteria.
+        """
+        try:
+            definition = get_case(case_id)
+        except ValueError:
+            raise HTTPException(404, "Selected case is not available.") from None
+        selected = None if criteria is None else [key for key in criteria if key]
+        try:
+            # Matching is pure computation over the governed cohort; running it off the
+            # event loop keeps streams, health probes and the chair responsive.
+            return await asyncio.to_thread(
+                build_cohort,
+                definition.cohort_profile,
+                case_id=case_id,
+                criteria=selected,
+                resolved=tuple(resolved or ()),
+                include_cases=include_cases,
+                minimum=config.cohort_minimum_subgroup,
+            )
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
 
     @application.post("/api/meetings", dependencies=protected, status_code=201)
     async def start(body: Start, service: EngineDep) -> Meeting:
@@ -396,9 +453,51 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     async def objection(meeting_id: str, body: Vote, service: EngineDep) -> Meeting:
         return await service.object(meeting_id, body.role, body.comment, body.plan_version)
 
+    @application.post(
+        "/api/meetings/{meeting_id}/communications/{audience}/approve", dependencies=protected
+    )
+    async def approve_communication(
+        meeting_id: str, audience: Audience, body: CommunicationReviewBody, service: EngineDep,
+    ) -> Meeting:
+        return await service.approve_communication(
+            meeting_id, audience, reviewer=body.reviewer, role=body.role,
+            plan_version=body.plan_version, revision=body.revision, comment=body.comment,
+        )
+
+    @application.post(
+        "/api/meetings/{meeting_id}/communications/{audience}/request-changes",
+        dependencies=protected,
+    )
+    async def request_communication_changes(
+        meeting_id: str, audience: Audience, body: CommunicationReviewBody, service: EngineDep,
+    ) -> Meeting:
+        return await service.request_communication_changes(
+            meeting_id, audience, reviewer=body.reviewer, role=body.role,
+            plan_version=body.plan_version, revision=body.revision, comment=body.comment,
+        )
+
+    @application.post(
+        "/api/meetings/{meeting_id}/communications/{audience}/regenerate", dependencies=protected
+    )
+    async def regenerate_communication(
+        meeting_id: str, audience: Audience, body: CommunicationRegenerate, service: EngineDep,
+    ) -> Meeting:
+        return await service.regenerate_communication(
+            meeting_id, audience, reviewer=body.reviewer, role=body.role
+        )
+
     @application.post("/api/meetings/{meeting_id}/memory", dependencies=protected)
     async def memory(meeting_id: str, body: MemoryAction, service: EngineDep) -> Meeting:
         return await service.memory(meeting_id, body.memory_id, body.action)
+
+    @application.post("/api/meetings/{meeting_id}/cohort-reference", dependencies=protected)
+    async def cohort_reference(
+        meeting_id: str, body: CohortReference, service: EngineDep
+    ) -> Meeting:
+        """Record a cohort finding in the discussion. It never decides the meeting."""
+        return await service.cohort_reference(
+            meeting_id, body.criteria, body.resolved, body.reference
+        )
 
     @application.post("/api/meetings/{meeting_id}/retry", dependencies=protected)
     async def retry(meeting_id: str, service: EngineDep) -> Meeting:

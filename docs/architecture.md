@@ -33,6 +33,14 @@ evidence applicability, pathway conditions and patient priorities. A persisted
 theme preference is applied before paint, with a system default and optional
 `scoutTheme` URL override.
 
+The application is framed as a module of a fictional hospital information
+system (`HospitalChrome.tsx`): a navy hospital header names the MDT room and the
+current workstation (for example "Radiologist workstation" or "MDT chair"), and an
+EHR-style patient banner repeats the case pseudonym, sex/age, case reference,
+diagnosis, stage, performance status and spoken language on every meeting screen.
+The banner reads only fields in the case record, never invents demographics or
+allergies, and labels the record fictional.
+
 Specialty screens put the role identity, attention cue, public assessment,
 newest-first activity and human controls in the center. A sticky desktop case
 rail keeps terse case facts and full-record access on the right. Full specialty
@@ -90,8 +98,8 @@ The UI never displays raw model chain of thought.
 
 An event has a meeting ID, monotonic sequence, timestamp, type, optional role
 and structured payload. Every event persists a transactional snapshot before
-it is broadcast. The chair serializes the meeting once per event; the same bytes
-are written to storage and sent to every stream. Storage calls run on one
+it is broadcast. The chair serializes the meeting once per event and sends the
+same bytes to every stream. Storage calls run on one
 dedicated worker thread, so a slow Blob write never blocks the event loop, health
 probes or open streams, while the single worker keeps writes in event order and
 the chair lock still admits one transition at a time. Reads of the active meeting
@@ -99,6 +107,14 @@ take the same lock, so they never observe a half-applied transition.
 `EvidenceFound` events and activity reference evidence already held in the
 meeting by `evidence_id`; a record that differs from the meeting's copy is kept
 in full, so exports remain a complete audit record.
+The store splits each snapshot on its worker thread. The static dossier (case,
+role contexts and evidence) is fixed at start and saved once per meeting: in the
+`meeting_static` table in SQLite, or as a `meeting-static/<id>.json` blob. Each
+event then stores only the dynamic state. SQLite writes both records in one
+transaction. Blob writes the dossier first, under the same ETag gate. Reads join
+the two records. Legacy full snapshots, which carry `case` inline, load
+unchanged. For the WT rehearsal round this cuts stored bytes from 37.9 MB to
+about 8.3 MB.
 SSE transports complete snapshots; bounded subscriber queues
 coalesce intermediate renders without deleting persisted audit events. Reconnect
 always receives the latest full state, so a stale event cursor cannot drop state.
@@ -116,6 +132,69 @@ is durable — it is written through the normal persistence path as a `RoomClear
 audit event on the meeting and restored on startup — so a restart cannot return a
 closed case to the participants' screens, while an uncleared room still resumes.
 
+## Outcome communications
+
+Once the decision is captured, the engine drafts two documents from the recorded
+outcome: a patient summary and a letter for the GP or referring colleague. The
+runtime (`communications.py`) is separate from the chair state machine. It reads
+a role-scoped copy of the record: plan, conditions and frictions for both
+documents. The patient summary also gets the patient-perspective position and
+priorities. The letter also gets every specialist position, concurrences,
+objections and metadata for the evidence the plan cites. It never reads raw
+events, tool traces or prompts.
+
+- **Skills, not scripts.** `skills/patient_summary.md` and `skills/clinician_letter.md`
+  are case-agnostic writing instructions. The patient summary uses the dossier's
+  `preferred_language` (en, de, it or nl); an unsupported language is refused
+  rather than guessed. The letter is always British English.
+- **Always a model, never a fallback.** Documents are drafted by the configured
+  Azure OpenAI deployment in both rehearsal and live meetings, with structured
+  output and no tools. Without a model, or on any failure, the document is FAILED
+  with a visible reason, and no scripted text is substituted.
+- **Validation.** A draft that cites unknown record references, contains URLs or
+  identifiers, is in the wrong language or has the wrong section order is rejected.
+- **Advisory checks and one self-revision.** Readability uses a per-language
+  formula: Flesch (EN), Amstad (DE), Gulpease (IT) or Flesch–Douma (NL). Other
+  checks cover length, sentence length, unexplained terms, numbers absent from
+  the record and plan coverage. If a target is missed, the model revises exactly
+  once; any remaining findings are shown to the reviewer.
+- **Human approval.** Only a named reviewer can approve, and approval binds to
+  the plan version and document revision. Requesting changes redrafts the
+  document as a new revision and revokes any earlier approval.
+- **Lifecycle.** A new case cannot start while a document is drafting, which is
+  bounded by the 300-second deadline. On restart, an interrupted draft becomes
+  FAILED with a recorded reason. Clearing the room keeps the documents in the
+  persisted meeting and export.
+
+## Comparable historical cases
+
+`src/mdt/cohort.py` is a separate read-only module: it holds no meeting state and
+the chair holds no cohort state. Each case definition carries a `CohortProfile` of
+clinical characteristics with an availability status (available, pending, stale or
+missing), so matching uses recorded facts rather than assumptions.
+`GET /api/cases/{case_id}/cohort` matches the current case against the governed
+cohort and returns counts, denominators, criterion-level effects, recorded board
+decisions, recorded outcomes, hospital variation, de-identified comparable cases,
+provenance and warnings. Omitting `criteria` preselects the clinically meaningful
+characteristics the case actually has; supplying it selects exactly those criteria,
+and an empty selection returns the unrestricted governed cohort. `resolved` replays
+the arrival of a pending result so the cohort recalculates without manual editing.
+Matching runs off the event loop, so a large cohort never blocks streams or the chair.
+
+No governed historical dataset ships with the demonstrator, so the cohort is a
+deterministic synthetic dataset derived from stable hashes: the same case and the
+same criteria always produce the same counts. Sites differ in size and data
+completeness on purpose, which is what makes degraded matching, hospital-level
+variation and suppressed subgroups visible. It is labeled synthetic wherever it
+is displayed and is never clinical evidence.
+
+The feature is descriptive. It ranks nothing, recommends nothing and cannot close
+a meeting. A clinician may quote one finding into the discussion with
+`POST /api/meetings/{meeting_id}/cohort-reference`, which records a
+`CohortReferenceAdded` event carrying the statement, its cohort definition, its
+denominator and its provenance. The event changes no plan, phase, position,
+concurrence or friction, and it is refused once a decision is captured.
+
 ## Workflow invariants
 
 - Only one mutating analysis round can run in the active room.
@@ -131,6 +210,17 @@ closed case to the participants' screens, while an uncleared room still resumes.
 - Uncertainty, missing full protocol access and conditional eligibility survive
   convergence; agreement is not represented as clinical certainty.
 - Interrupted analysis is marked ERROR after restart and can be retried.
+- Outcome documents are drafted only after the decision is captured, only from
+  the recorded outcome, and are never shared as approved without a named,
+  version-bound human approval.
+
+- Cohort findings are context only: a recorded reference never changes the plan,
+  phase, positions or concurrence, and never decides the meeting.
+- A characteristic that is missing, pending or stale disables its matching
+  criterion, is explained on screen and is never treated as a negative finding;
+  the resulting cohort is labeled as broader than requested.
+- Cohorts and site subgroups below the configured minimum size
+  (`MDT_COHORT_MINIMUM_SUBGROUP`, default 15) are suppressed rather than shown.
 
 ## Deliberate trade-offs
 

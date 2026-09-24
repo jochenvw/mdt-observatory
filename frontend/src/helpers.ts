@@ -1,4 +1,4 @@
-import type { Data, Meeting, Role } from './types';
+import type { Data, Friction, Meeting, Role } from './types';
 import { clinicalActivity, clinicalError, clinicalText } from './presentation';
 
 export function label(value: string): string {
@@ -38,6 +38,10 @@ export function concurrenceActor(meeting: Meeting, role: Role): 'human' | 'agent
   if (concurrence.actor === 'human') return 'human';
   return meeting.roles[role]?.position?.autonomy === 'AUTO' ? 'agent' : null;
 }
+/** Questions only a person can answer: imaging review (radiology) and recorded objections. */
+export function needsHumanReply(friction: Friction, role: Role): boolean {
+  return friction.id.startsWith('objection-') || (friction.id === 'imaging' && role === 'radiology');
+}
 export function roleAttention(meeting: Meeting, role: Role): { title: string; detail: string; tone: string; running: boolean } {
   const state = meeting.roles[role];
   const cue = (title: string, detail: string, tone = '', running = false) => ({ title, detail, tone, running });
@@ -53,7 +57,13 @@ export function roleAttention(meeting: Meeting, role: Role): { title: string; de
     return cue('Your review is needed', `Read proposal version ${meeting.plan.version} and its conditions, then concur or record an objection.`, 'warning');
   }
   const questions = meeting.frictions.filter(item => !item.resolved && item.roles.includes(role));
-  if (questions.length) return cue('Question needs attention', `${questions.length} unresolved question${questions.length === 1 ? ' involves' : 's involve'} this specialty. Add guidance or ask the chair for focused review.`, 'warning');
+  const awaitingHuman = questions.filter(item => needsHumanReply(item, role));
+  if (awaitingHuman.length) {
+    if (state?.guidance.length) return cue('Question still open', 'Your last reply did not say what you reviewed, so your agent kept the question open rather than assume an answer.', 'warning');
+    return cue('Your input is needed', 'Your agent has a question it cannot answer from the record alone. Reply in the panel below.', 'warning');
+  }
+  if (questions.length) return cue('Waiting for the chair', 'An open question involves this specialty. Your agent answers it in the chair’s focused follow-up round; you may add an instruction.', 'accent');
+  if (state?.guidance.length && meeting.phase === 'TARGETED_DISCUSSION' && meeting.frictions.some(item => !item.resolved)) return cue('Question answered', 'Your reply closed this specialty’s question. Next, the chair runs a focused follow-up on the remaining open questions, then proposes a plan for review.', 'success');
   if (meeting.busy) return cue('Waiting for the team', 'Other specialists are still reviewing. A published position is not a final MDT decision.');
   if (state?.position) return cue(state.revision > 1 ? 'Assessment updated' : 'Review finished', `Specialist position revision ${state.revision} is available. It is not a final MDT decision.`, state.revision > 1 ? 'accent' : 'success');
   return cue('Review not started', 'The specialist assessment will appear when the case review begins.');

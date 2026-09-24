@@ -16,12 +16,17 @@ interface ClinicalProfile {
   title: string;
   focus: [string, string, string];
   guidance: string;
+  /** Example human answer when this specialty's agent asks for input: a reported finding. */
+  reply?: string;
 }
+/** Default (BRAF) case: example radiologist answer to the imaging question. */
+export const DEFAULT_RADIOLOGY_REPLY = 'I reviewed the liver MRI and chest CT: all nine liver sites are mapped with clear vessel margins, the remnant looks adequate, and the lung nodule is stable and not suspicious.';
 const conversionProfiles: Record<Role, ClinicalProfile> = {
   radiology: {
     title: 'Colorectal response imaging',
     focus: ['Baseline site reconciliation', 'Disappearing lesions', 'Indeterminate findings'],
-    guidance: 'Reconcile the eleven baseline liver sites with current imaging, disappearing lesions and the indeterminate focus. Identify missing site-level measurements without inventing a lesion map.',
+    guidance: 'Review all 11 baseline liver sites against current imaging: confirm which disappeared lesions are truly eliminated, assess the uncertain 7 mm IVa focus and state vessel and remnant limitations, without inventing a lesion map.',
+    reply: 'I reviewed the baseline and current MRI: all 11 original liver sites are mapped, the disappeared lesions are marked for intra-operative ultrasound, and the 7 mm IVa focus is most likely residual disease to include in the plan. Vessel interfaces and the remnant look adequate for parenchymal-sparing treatment.',
   },
   oncology: {
     title: 'Conversion response and tolerability',
@@ -59,6 +64,7 @@ const pancreaticProfiles: Record<Role, ClinicalProfile> = {
     title: 'Pancreatic response imaging',
     focus: ['Pancreatic head lesion', 'Vascular interfaces', 'Imaging limitations'],
     guidance: 'Review pancreatic tumour response and vascular interfaces. Distinguish technically plausible resection from physiological fitness; retain imaging uncertainty.',
+    reply: 'I reviewed the pancreatic imaging: the SMV/portal interface looks reconstructable and no arterial involvement is seen. Aortic stenosis and cardiac reserve still need the echo and anaesthetic review before surgery.',
   },
   oncology: {
     title: 'Pancreatic treatment and recovery',

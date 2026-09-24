@@ -6,8 +6,21 @@ from typing import Any
 from uuid import uuid4
 
 from mdt.case_registry import case_ids, get_case
+from mdt.cohort import build_cohort, reference_statement
+from mdt.communications import (
+    AUTHOR_ROLE,
+    LETTER_LANGUAGE,
+    CommunicationRuntimeError,
+    DraftResult,
+    communication_inputs,
+    draft,
+)
 from mdt.config import Settings
 from mdt.models import (
+    AUDIENCES,
+    Audience,
+    Communication,
+    CommunicationReview,
     Concurrence,
     Event,
     Friction,
@@ -24,6 +37,8 @@ from mdt.telemetry import error_counter, event_counter, tracer
 
 log = logging.getLogger("mdt.engine")
 Analyzer = Callable[..., Awaitable[Position]]
+Drafter = Callable[..., Awaitable[DraftResult]]
+OUTCOME_UNAVAILABLE = "Outcome documents are available only after the decision is captured."
 
 
 class Conflict(Exception):
@@ -39,10 +54,14 @@ class PersistenceFailure(RuntimeError):
 
 
 class Engine:
-    def __init__(self, store: Persistence, settings: Settings, analyzer: Analyzer) -> None:
+    def __init__(
+        self, store: Persistence, settings: Settings, analyzer: Analyzer,
+        drafter: Drafter | None = None,
+    ) -> None:
         self.store = store
         self.settings = settings
         self.analyzer = analyzer
+        self.drafter = drafter or draft
         self.lock = asyncio.Lock()
         # One worker keeps storage calls off the event loop, serializes access to
         # the single SQLite connection and preserves write order.
@@ -65,6 +84,26 @@ class Engine:
                     role.error = "Analysis interrupted by server restart."
             # Runs before the app serves requests, so a direct write is safe here.
             self._append("AnalysisInterrupted", {"summary": self.meeting.error}, None)
+            meeting = self.meeting
+            store.save_snapshot(meeting.id, meeting.created_at, meeting.model_dump_json())
+        drafting = [
+            item for item in (self.meeting.communications.values() if self.meeting else [])
+            if item.status == "DRAFTING"
+        ]
+        if self.meeting and drafting:
+            for item in drafting:
+                item.status = "FAILED"
+                item.error = "Server restarted while drafting. Regenerate to try again."
+                item.updated_at = utcnow()
+            self._append(
+                "CommunicationFailed",
+                {
+                    "audiences": [item.audience for item in drafting],
+                    "summary": "Outcome drafting was interrupted by a server restart.",
+                    "error": True,
+                },
+                None,
+            )
             meeting = self.meeting
             store.save_snapshot(meeting.id, meeting.created_at, meeting.model_dump_json())
 
@@ -233,6 +272,10 @@ class Engine:
                 )
             if self.meeting and self.meeting.busy:
                 raise Conflict("Wait for the active round before starting another meeting.")
+            if self.meeting and any(
+                item.status == "DRAFTING" for item in self.meeting.communications.values()
+            ):
+                raise Conflict("Wait for the outcome documents to finish drafting.")
             if self.persistence_failed:
                 raise PersistenceFailure("Recover the interrupted meeting before starting another.")
             if mode not in {"rehearsal", "azure"}:
@@ -491,17 +534,26 @@ class Engine:
         await self._phase(Phase.PLAN_PROPOSAL)
         positions = [state.position for state in meeting.roles.values() if state.position]
         runtime = get_case(str(meeting.case["id"])).runtime
-        conditions = list(dict.fromkeys(u for p in positions for u in p.uncertainties))
-        conditions.append(
-            "Demonstration discussion only. A qualified MDT must independently verify "
-            "diagnosis, current guidance, eligibility and patient consent."
+        conditions = list(
+            dict.fromkeys(
+                [
+                    *(u for p in positions for u in p.uncertainties),
+                    "Demonstration discussion only. A qualified MDT must independently verify "
+                    "diagnosis, current guidance, eligibility and patient consent.",
+                    *runtime.proposal.conditions,
+                ]
+            )
         )
-        conditions.extend(runtime.proposal.conditions)
+        # Specialties that reached the same recommendation share one action, so the
+        # plan reads as distinct next steps rather than repeated role text.
+        grouped: dict[str, list[str]] = {}
+        for p in positions:
+            grouped.setdefault(p.recommendation, []).append(meeting.roles[p.role].label)
         meeting.plan = Plan(
             version=meeting.plan.version + 1 if meeting.plan else 1,
             title=runtime.proposal.title,
             summary=runtime.proposal.summary,
-            actions=[f"{meeting.roles[p.role].label}: {p.recommendation}" for p in positions],
+            actions=[f"{' · '.join(labels)}: {text}" for text, labels in grouped.items()],
             conditions=conditions,
             evidence_ids=list(
                 dict.fromkeys(
@@ -599,8 +651,279 @@ class Engine:
         ):
             return
         meeting.closed_at = utcnow()
+        # Drafts are recorded with the closing snapshot, so a restart can mark them failed.
+        for audience in AUDIENCES:
+            meeting.communications[audience] = Communication(
+                audience=audience, plan_version=meeting.plan.version,
+                generated_by="azure", author_role=AUTHOR_ROLE[audience],
+                language=self._language(meeting, audience),
+            )
         await self._phase(Phase.DECISION_CAPTURED)
         await self._event("CaseClosed", {"version": meeting.plan.version})
+        for audience in AUDIENCES:
+            self._spawn_draft(meeting.id, audience, 1)
+
+    @staticmethod
+    def _language(meeting: Meeting, audience: Audience) -> str:
+        if audience != "patient":
+            return LETTER_LANGUAGE
+        return str(meeting.case.get("preferred_language") or "en").strip().lower()
+
+    def _spawn_draft(self, meeting_id: str, audience: Audience, revision: int) -> None:
+        task = asyncio.create_task(self._draft(meeting_id, audience, revision))
+        self.tasks.add(task)
+        task.add_done_callback(self.tasks.discard)
+
+    def _drafting(self, meeting_id: str, audience: Audience, revision: int) -> Communication | None:
+        """The draft this task owns, or None if the room, audience or revision moved on."""
+        meeting = self.meeting
+        if not meeting or meeting.id != meeting_id:
+            return None
+        item = meeting.communications.get(audience)
+        if not item or item.revision != revision or item.status != "DRAFTING":
+            return None
+        return item
+
+    async def _draft(self, meeting_id: str, audience: Audience, revision: int) -> None:
+        async with self.lock:
+            item = self._drafting(meeting_id, audience, revision)
+            if item is None or self.meeting is None:
+                return
+            try:
+                inputs = communication_inputs(
+                    self.meeting, audience, list(item.requested_changes), revision
+                )
+            except CommunicationRuntimeError as exc:
+                item.status = "FAILED"
+                item.error = str(exc)
+                item.updated_at = utcnow()
+                await self._event(
+                    "CommunicationFailed",
+                    {"audience": audience, "revision": revision, "summary": item.error,
+                     "error": True},
+                )
+                return
+
+        async def emit(kind: str, payload: dict[str, Any]) -> None:
+            async with self.lock:
+                if self._drafting(meeting_id, audience, revision) is None:
+                    return
+                await self._event(
+                    "CommunicationActivity",
+                    {**payload, "audience": audience, "activity": kind, "revision": revision},
+                )
+
+        result: DraftResult | None = None
+        error: str | None = None
+        try:
+            with tracer.start_as_current_span(
+                "mdt.communication", attributes={"mdt.audience": audience, "mdt.mode": inputs.mode}
+            ):
+                result = await self.drafter(inputs, emit=emit, settings=self.settings)
+        except PersistenceFailure:
+            raise
+        except Exception as exc:
+            error = self._draft_error(audience, exc)
+        async with self.lock:
+            current = self._drafting(meeting_id, audience, revision)
+            if current is None:
+                return
+            current.updated_at = utcnow()
+            if result is None:
+                current.status = "FAILED"
+                current.error = error
+                await self._event(
+                    "CommunicationFailed",
+                    {"audience": audience, "revision": revision, "summary": error, "error": True},
+                )
+                return
+            current.title = result.title
+            current.sections = result.sections
+            current.glossary = result.glossary
+            current.questions_to_ask = result.questions_to_ask
+            current.citations = result.citations
+            current.checks = result.checks
+            current.generated_by = result.generated_by
+            current.language = result.language
+            current.error = None
+            current.status = "DRAFT"
+            await self._event(
+                "CommunicationDrafted",
+                {
+                    "audience": audience,
+                    "revision": revision,
+                    "summary": (
+                        "Patient summary drafted; awaiting clinician review."
+                        if audience == "patient"
+                        else "Clinician letter drafted; awaiting clinician sign-off."
+                    ),
+                },
+            )
+
+    @staticmethod
+    def _draft_error(audience: Audience, exc: Exception) -> str:
+        status = getattr(exc, "status_code", None)
+        log.error(
+            "Communication failed audience=%s error_type=%s provider_status=%s provider_code=%s",
+            audience, type(exc).__name__, status, getattr(exc, "code", None),
+        )
+        error_counter.add(1, {"mdt.audience": audience, "error.type": type(exc).__name__})
+        reasons = {
+            401: "Azure authentication failed. Renew credentials, then regenerate.",
+            403: "Azure access denied. Verify the model identity role, then regenerate.",
+            429: "Azure model quota is busy. Retry budget exhausted; regenerate later.",
+        }
+        if isinstance(status, int) and status in reasons:
+            return reasons[status]
+        if isinstance(exc, CommunicationRuntimeError):
+            return f"{exc} No scripted text was substituted; regenerate to try again."
+        if isinstance(exc, TimeoutError):
+            return "Drafting timed out. No scripted text was substituted; regenerate to try again."
+        return (
+            f"{type(exc).__name__}: drafting failed. No scripted text was substituted; "
+            "check model configuration and diagnostics, then regenerate."
+        )
+
+    def _outcome(self, meeting_id: str, audience: str) -> tuple[Meeting, Plan]:
+        meeting = self._current(meeting_id)
+        if audience not in AUDIENCES:
+            raise NotFound("Unknown outcome document.")
+        if self.persistence_failed:
+            raise PersistenceFailure("Retry storage recovery before changing the meeting.")
+        if meeting.phase != Phase.DECISION_CAPTURED or not meeting.plan:
+            raise Conflict(OUTCOME_UNAVAILABLE)
+        return meeting, meeting.plan
+
+    @staticmethod
+    def _bound(item: Communication, plan: Plan, plan_version: int, revision: int) -> None:
+        if plan_version != plan.version or item.plan_version != plan.version:
+            raise Conflict("The plan version changed. Review the current document.")
+        if revision != item.revision:
+            raise Conflict("A newer draft revision exists. Review it before continuing.")
+
+    @staticmethod
+    def _reviewer(reviewer: str) -> str:
+        name = reviewer.strip()
+        if not name:
+            raise Conflict("Name the reviewing clinician.")
+        return name
+
+    async def approve_communication(
+        self, meeting_id: str, audience: Audience, *, reviewer: str, role: Role | None,
+        plan_version: int, revision: int, comment: str = "",
+    ) -> Meeting:
+        async with self.lock:
+            meeting, plan = self._outcome(meeting_id, audience)
+            name = self._reviewer(reviewer)
+            item = meeting.communications.get(audience)
+            if item is None or item.status != "DRAFT":
+                raise Conflict(
+                    "Already approved." if item and item.status == "APPROVED"
+                    else "Only a completed draft can be approved."
+                )
+            self._bound(item, plan, plan_version, revision)
+            now = utcnow()
+            item.reviews.append(
+                CommunicationReview(
+                    action="approve", reviewer=name, role=role, comment=comment.strip(),
+                    plan_version=plan.version, revision=item.revision, timestamp=now,
+                )
+            )
+            item.status = "APPROVED"
+            item.approved_by = name
+            item.approved_role = role
+            item.approved_at = now
+            item.approved_revision = item.revision
+            item.updated_at = now
+            await self._event(
+                "CommunicationApproved",
+                {
+                    "audience": audience, "revision": item.revision, "reviewer": name,
+                    "summary": f"{name} approved revision {item.revision} for plan "
+                    f"version {plan.version}.",
+                },
+                role,
+            )
+            return meeting.model_copy(deep=True)
+
+    async def request_communication_changes(
+        self, meeting_id: str, audience: Audience, *, reviewer: str, role: Role | None,
+        plan_version: int, revision: int, comment: str,
+    ) -> Meeting:
+        async with self.lock:
+            meeting, plan = self._outcome(meeting_id, audience)
+            name = self._reviewer(reviewer)
+            request = comment.strip()
+            if not request:
+                raise Conflict("Describe the change the draft needs.")
+            item = meeting.communications.get(audience)
+            if item is None or item.status not in {"DRAFT", "APPROVED"}:
+                raise Conflict("Changes can be requested on a completed draft only.")
+            self._bound(item, plan, plan_version, revision)
+            item.reviews.append(
+                CommunicationReview(
+                    action="request_changes", reviewer=name, role=role, comment=request,
+                    plan_version=plan.version, revision=item.revision,
+                )
+            )
+            item.requested_changes.append(request)
+            item.status = "CHANGES_REQUESTED"
+            item.approved_by = item.approved_at = None
+            item.approved_role = None
+            item.approved_revision = None
+            item.updated_at = utcnow()
+            await self._event(
+                "CommunicationChangesRequested",
+                {"audience": audience, "revision": item.revision, "reviewer": name,
+                 "summary": request},
+                role,
+            )
+            await self._redraft(meeting, item)
+            return meeting.model_copy(deep=True)
+
+    async def regenerate_communication(
+        self, meeting_id: str, audience: Audience, *, reviewer: str, role: Role | None,
+    ) -> Meeting:
+        async with self.lock:
+            meeting, plan = self._outcome(meeting_id, audience)
+            name = self._reviewer(reviewer)
+            item = meeting.communications.get(audience)
+            if item is not None and item.status == "DRAFTING":
+                raise Conflict("This document is already being drafted.")
+            if item is not None and item.status == "APPROVED":
+                raise Conflict("Request changes to replace an approved document.")
+            if item is None:
+                item = Communication(
+                    audience=audience, plan_version=plan.version, revision=0,
+                    generated_by="azure", author_role=AUTHOR_ROLE[audience],
+                    language=self._language(meeting, audience),
+                )
+                meeting.communications[audience] = item
+            item.reviews.append(
+                CommunicationReview(
+                    action="regenerate", reviewer=name, role=role,
+                    plan_version=plan.version, revision=item.revision,
+                )
+            )
+            await self._redraft(meeting, item)
+            return meeting.model_copy(deep=True)
+
+    async def _redraft(self, meeting: Meeting, item: Communication) -> None:
+        item.revision += 1
+        item.status = "DRAFTING"
+        item.error = None
+        item.sections = []
+        item.glossary = []
+        item.questions_to_ask = []
+        item.citations = []
+        item.checks = None
+        item.updated_at = utcnow()
+        await self._event(
+            "CommunicationDraftingStarted",
+            {"audience": item.audience, "revision": item.revision,
+             "summary": f"Drafting revision {item.revision}."},
+        )
+        self._spawn_draft(meeting.id, item.audience, item.revision)
 
     async def object(
         self, meeting_id: str, role: Role, comment: str, plan_version: int | None = None
@@ -702,6 +1025,49 @@ class Engine:
                     "decision_status": "not an approved clinical decision",
                 },
             )
+
+            return meeting.model_copy(deep=True)
+
+    async def cohort_reference(
+        self,
+        meeting_id: str,
+        criteria: list[str] | None,
+        resolved: list[str],
+        reference: str,
+    ) -> Meeting:
+        """Quote one similar-case finding in the discussion, definition included.
+
+        The reference is recorded as descriptive context with its cohort definition,
+        denominator and provenance. It never changes the plan, the phase, existing
+        concurrence or any specialist position: people still decide.
+        """
+        async with self.lock:
+            meeting = self._editable(meeting_id)
+            case_id = str(meeting.case["id"])
+        profile = get_case(case_id).cohort_profile
+        try:
+            # Matching is CPU-bound and pure; it runs off the loop and outside the
+            # chair lock so an analysis round is never delayed by a cohort query.
+            result = await asyncio.to_thread(
+                build_cohort,
+                profile,
+                case_id=case_id,
+                criteria=criteria,
+                resolved=tuple(resolved),
+                minimum=self.settings.cohort_minimum_subgroup,
+            )
+            if result.suppressed:
+                raise Conflict(
+                    f"Only {result.matched} comparable cases match; below the minimum subgroup "
+                    f"size of {result.definition.minimum_subgroup}. Widen the criteria before "
+                    "quoting this cohort."
+                )
+            payload = reference_statement(result, reference)
+        except ValueError as exc:
+            raise Conflict(str(exc)) from exc
+        async with self.lock:
+            meeting = self._editable(meeting_id)
+            await self._event("CohortReferenceAdded", payload)
             return meeting.model_copy(deep=True)
 
     async def retry(self, meeting_id: str) -> Meeting:

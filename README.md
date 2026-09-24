@@ -57,6 +57,10 @@ Azure Identity (local Azure CLI or deployed managed identity). The identity need
 **Cognitive Services OpenAI User** on the model account. Model failures surface
 as failed roles and block consensus; the app never silently switches to rehearsal.
 
+Outcome documents (the patient summary and colleague letter) always need this model
+configuration, including in the scripted demonstration. Without it, they fail
+visibly and no scripted text is substituted.
+
 Live mode runs real model calls over **curated evidence tools**, not unrestricted
 live medical research. Access labels describe the underlying source and the
 recorded extract; no paywall bypass or invented protocol access is implied.
@@ -100,6 +104,9 @@ and exportable; start a new case to use the new dossier.
    objection reopens discussion and invalidates earlier votes.
 7. **Capture.** The final decision contains the full event history, role positions,
    human contributions, evidence, residual uncertainty and objections.
+8. **Communicate.** **Outcome & letters** shows the agreed plan forward and drafts
+   a patient summary in the patient's language, plus an English colleague letter,
+   for named clinician approval.
 
 See [demo walkthrough](docs/demo.md), [architecture](docs/architecture.md) and
 [operations](docs/operations.md).
@@ -180,5 +187,12 @@ room; do not run it during someone else's presentation.
   silently deleting history.
 - Memory is explicit, role/clinician scoped and labeled by category. Forgetting
   removes a nudge from the active meeting, not historical clinical/audit records.
+- Comparable historical cases are descriptive, not advisory. No governed registry
+  is connected, so the cohort is a deterministic synthetic dataset, labeled as
+  such on screen and in exports, and is never clinical evidence. It never ranks,
+  prefers or recommends a treatment, cohorts and site subgroups below the
+  configured minimum size (`MDT_COHORT_MINIMUM_SUBGROUP`, default 15) are
+  suppressed, and a quoted cohort finding is recorded as context that decides
+  nothing.
 - No real clinician impersonation, stereotyping, EHR integration or raw
   chain-of-thought exposure.

@@ -20,3 +20,5 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str = ""
     elevenlabs_base_url: str = "https://api.elevenlabs.io/v1"
     elevenlabs_model_id: str = "eleven_multilingual_v2"
+    # Smallest matched subgroup that may be described; smaller cohorts are suppressed.
+    cohort_minimum_subgroup: int = Field(default=15, ge=5, le=500)

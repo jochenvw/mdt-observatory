@@ -2,7 +2,7 @@
 
 import os
 from typing import Any
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 from azure.core import MatchConditions
 from azure.core.exceptions import ResourceNotFoundError
@@ -11,6 +11,7 @@ from azure.storage.blob import BlobServiceClient, ContentSettings
 from opentelemetry import trace
 
 from mdt.models import Meeting, Memory
+from mdt.store import join_snapshot, split_snapshot
 
 tracer = trace.get_tracer("mdt.persistence")
 
@@ -38,6 +39,7 @@ class BlobStore:
         )
         self.container = self.client.get_container_client(container_name)
         self.etags: dict[str, str] = {}
+        self._static: dict[str, str] = {}
         # Safe only because one replica is the sole writer (ETags reject others):
         # after one full listing, new meetings are counted as they are created.
         self._meeting_count: int | None = None
@@ -99,12 +101,28 @@ class BlobStore:
     def save(self, meeting: Meeting) -> None:
         self.save_snapshot(meeting.id, meeting.created_at, meeting.model_dump_json())
 
+    @staticmethod
+    def _static_name(meeting_id: str) -> str:
+        return f"meeting-static/{quote(meeting_id, safe='')}.json"
+
     def save_snapshot(self, meeting_id: str, created_at: str, payload: str) -> None:
-        self._write(f"meetings/{meeting_id}.json", payload, {"created_at": created_at})
+        static, dynamic = split_snapshot(payload)
+        # Dossier first: a dynamic record is never visible without the dossier it needs.
+        if self._static.get(meeting_id) != static:
+            self._write(self._static_name(meeting_id), static, {"created_at": created_at})
+            self._static[meeting_id] = static
+        self._write(f"meetings/{meeting_id}.json", dynamic, {"created_at": created_at})
+
+    def _join(self, meeting_id: str, dynamic: str) -> Meeting:
+        # Legacy full snapshots have no dossier record; join_snapshot loads them as-is.
+        static = self._read(self._static_name(meeting_id))
+        if static is not None:
+            self._static[meeting_id] = static
+        return join_snapshot(dynamic, static)
 
     def get(self, meeting_id: str) -> Meeting | None:
         payload = self._read(f"meetings/{quote(meeting_id, safe='')}.json")
-        return Meeting.model_validate_json(payload) if payload is not None else None
+        return self._join(meeting_id, payload) if payload is not None else None
 
     def latest(self) -> Meeting | None:
         latest_name: str | None = None
@@ -121,7 +139,8 @@ class BlobStore:
         payload = self._read(latest_name)
         if payload is None:
             raise RuntimeError("Latest meeting disappeared while reading persistent state.")
-        return Meeting.model_validate_json(payload)
+        meeting_id = unquote(latest_name.removeprefix("meetings/").removesuffix(".json"))
+        return self._join(meeting_id, payload)
 
     def count(self) -> int:
         if self._meeting_count is None:

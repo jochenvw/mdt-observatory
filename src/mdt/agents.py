@@ -115,9 +115,16 @@ class RunState:
 
 
 def _targeted_imaging_guidance(guidance: list[str], terms: list[str]) -> bool:
-    """True when human guidance asks for a comparison of one of the case's structures."""
-    target = r"\b(?:" + "|".join(re.escape(term) for term in terms) + r")\b"
-    comparison = r"\b(compar(?:e|ison)|review|check|confirm|assess|verify|vergelijk|beoordeel)\b"
+    """True when human guidance requests or reports a review of one of the case's structures.
+
+    Both an instruction ("Review the 11 sites") and a reported finding ("I reviewed the
+    11 sites") count; general approval ("go ahead") names nothing reviewed and does not.
+    """
+    target = r"\b(?:" + "|".join(re.escape(term) for term in terms) + r")s?\b"
+    comparison = (
+        r"\b(compar(?:e|ed|ison)|review(?:ed)?|check(?:ed)?|confirm(?:ed)?|assess(?:ed)?"
+        r"|verif(?:y|ied)|vergelijk|beoordeel(?:d)?)\b"
+    )
     disregard = r"\b(ignore|disregard|skip|negeer)\b"
     return any(
         (

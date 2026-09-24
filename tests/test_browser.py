@@ -202,11 +202,14 @@ def test_browser_full_demo_repeatability_and_mobile(server: str) -> None:
         expect(page.get_by_text("Radiology", exact=True).first).to_be_visible()
         navigate(page, "Radiology")
         expect(page.locator("svg").first).to_be_visible()
+        question = page.get_by_test_id("agent-question")
+        expect(question).to_contain_text("I cannot settle this from the record alone")
+        expect(question).to_contain_text("Can all nine original liver sites")
         page.locator("#guidance-radiology").fill(
             "Review all nine liver sites, vessel margins and the indeterminate lung nodule "
             "before clearance planning."
         )
-        click_command(page, page.get_by_role("button", name="Send guidance", exact=True), "/steer")
+        click_command(page, page.get_by_role("button", name="Send reply", exact=True), "/steer")
         after_guidance = wait_settled(page)
         assert after_guidance["roles"]["radiology"]["position"]["human_intervention"]
         navigate(page, "Chair")

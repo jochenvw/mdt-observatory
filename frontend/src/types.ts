@@ -1,8 +1,8 @@
 export const ROLES = ['radiology', 'oncology', 'surgery', 'pathology', 'research', 'protocol', 'patient'] as const;
 export type Role = typeof ROLES[number];
 export type Mode = 'rehearsal' | 'azure';
-export type Workspace = 'cases' | 'central' | 'chair' | 'wall' | Role;
-export interface CaseSummary { id: string; title: string; patient_label: string; stage: string; question: string }
+export type Workspace = 'cases' | 'central' | 'chair' | 'wall' | 'outcome' | Role;
+export interface CaseSummary { id: string; title: string; patient_label: string; stage: string; question: string; preferred_language?: string }
 export const PHASES = ['IDLE', 'CASE_LOADING', 'INITIAL_ANALYSIS', 'POSITION_COLLECTION', 'FRICTION_ANALYSIS', 'TARGETED_DISCUSSION', 'POSITION_UPDATE', 'PLAN_PROPOSAL', 'CONCURRENCE', 'DECISION_CAPTURED'] as const;
 export type Phase = typeof PHASES[number] | 'ERROR';
 export type Data = Record<string, unknown>;
@@ -102,6 +102,55 @@ export interface MeetingEvent {
   payload: Data;
   timestamp: string;
 }
+export const AUDIENCES = ['patient', 'clinician'] as const;
+export type Audience = typeof AUDIENCES[number];
+export type CommunicationStatus = 'DRAFTING' | 'DRAFT' | 'CHANGES_REQUESTED' | 'APPROVED' | 'FAILED';
+export interface CommunicationSection { id: string; heading: string; paragraphs: string[]; bullets: string[]; columns: string[]; rows: string[][]; source_refs: string[] }
+export interface GlossaryTerm { term: string; meaning: string }
+export interface CommunicationCitation { evidence_id: string; title: string; authority: string; access: string; verification: string }
+export interface CommunicationChecks {
+  word_count: number;
+  word_target: [number, number];
+  sentence_count: number;
+  average_sentence_words: number;
+  longest_sentence_words: number;
+  reading_ease: number;
+  reading_formula: string;
+  grade_level: number | null;
+  reading_target: string;
+  language: string;
+  detected_language: string | null;
+  unexplained_terms: string[];
+  uncovered_refs: string[];
+  unsupported_numbers: string[];
+  unresolved_citations: string[];
+  unknown_refs: string[];
+}
+export interface CommunicationReview { action: 'approve' | 'request_changes' | 'regenerate'; reviewer: string; role: Role | null; actor: 'human'; comment: string; plan_version: number; revision: number; timestamp: string }
+export interface Communication {
+  audience: Audience;
+  plan_version: number;
+  revision: number;
+  status: CommunicationStatus;
+  generated_by: 'rehearsal' | 'azure';
+  author_role: string;
+  language: string;
+  title: string;
+  sections: CommunicationSection[];
+  glossary: GlossaryTerm[];
+  questions_to_ask: string[];
+  citations: CommunicationCitation[];
+  checks: CommunicationChecks | null;
+  reviews: CommunicationReview[];
+  requested_changes: string[];
+  approved_by: string | null;
+  approved_role: Role | null;
+  approved_at: string | null;
+  approved_revision: number | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
 export interface Meeting {
   id: string;
   phase: Phase;
@@ -120,6 +169,7 @@ export interface Meeting {
   error: string | null;
   created_at: string;
   closed_at: string | null;
+  communications?: Partial<Record<Audience, Communication>>;
 }
 export interface VoiceAgent {
   key: string;

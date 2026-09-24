@@ -26,10 +26,20 @@ describe('clinical attention cues', () => {
   it('does not resolve open questions merely because a round has stopped', () => {
     const state = meeting();
     state.phase = 'TARGETED_DISCUSSION';
-    state.frictions = [{ id: 'clearance', question: 'Review all sites', roles: ['radiology'], missing: [], blocking: true, resolved: false, resolution: null }];
-    expect(roleAttention(state, 'radiology').title).toBe('Question needs attention');
+    state.frictions = [{ id: 'imaging', question: 'Review all sites', roles: ['radiology'], missing: [], blocking: true, resolved: false, resolution: null }];
+    expect(roleAttention(state, 'radiology').title).toBe('Your input is needed');
+    state.roles.radiology = {
+      role: 'radiology', label: 'Radiology', status: 'DONE', context: {}, position: null,
+      trace: { assessment: '', observations: [], hypothesis: '', uncertainties: [], evidence_checking: [], next_action: '' },
+      activity: [], guidance: ['Go ahead'], revision: 2, error: null,
+    };
+    expect(roleAttention(state, 'radiology')).toMatchObject({ title: 'Question still open', tone: 'warning' });
+    state.frictions.push({ id: 'applicability', question: 'Is the evidence applicable?', roles: ['research'], missing: [], blocking: true, resolved: false, resolution: null });
+    expect(roleAttention(state, 'research').title).toBe('Waiting for the chair');
     expect(state.frictions[0].resolved).toBe(false);
     expect(roleAttention(state, 'surgery').title).toBe('Review not started');
+    const answered = { ...state, frictions: [{ ...state.frictions[0], resolved: true }, state.frictions[1]] };
+    expect(roleAttention(answered, 'radiology').title).toBe('Question answered');
     state.phase = 'DECISION_CAPTURED';
     expect(roleAttention(state, 'radiology').detail).toContain('read-only');
   });

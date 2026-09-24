@@ -147,6 +147,32 @@ def test_unread_existing_snapshot_is_not_overwritten(cloud: FakeContainer) -> No
     two.close()
 
 
+def test_dossier_is_written_once_and_legacy_blobs_load(cloud: FakeContainer) -> None:
+    store = blob_store.BlobStore(ACCOUNT, "mdt-state")
+    meeting = Meeting(id="split", created_at="2026-09-16T10:00:00+00:00", case={"id": "C"})
+    store.save(meeting)
+    meeting.round = 2
+    store.save(meeting)
+    static = cloud.records["meeting-static/split.json"]
+    assert static["etag"] == "1", "the unchanged dossier is not rewritten per event"
+    assert b'"case"' not in cloud.records["meetings/split.json"]["payload"]
+    legacy = Meeting(id="legacy", created_at="2026-09-16T11:00:00+00:00", case={"id": "L"})
+    cloud.records["meetings/legacy.json"] = {
+        "payload": legacy.model_dump_json().encode(),
+        "etag": "legacy",
+        "metadata": {"created_at": legacy.created_at},
+    }
+    store.close()
+    reopened = blob_store.BlobStore(ACCOUNT, "mdt-state")
+    assert reopened.count() == 2, "dossier records are not counted as meetings"
+    assert reopened.get("split") == meeting
+    assert reopened.latest() == legacy
+    legacy.round = 1
+    reopened.save(legacy)
+    assert reopened.get("legacy") == legacy
+    reopened.close()
+
+
 def test_explicit_memory_and_persistent_forget(cloud: FakeContainer) -> None:
     store = blob_store.BlobStore(ACCOUNT, "mdt-state")
     seed = Memory(
