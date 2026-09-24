@@ -315,8 +315,11 @@ def test_voice_contribution_rejects_blank_confirmed_transcript(tmp_path: Path) -
 
 
 def test_voice_speech_requires_server_side_key_and_never_accepts_unknown_voice(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Guard against a real MDT_ELEVENLABS_API_KEY leaking in from the runner
+    # environment; this test asserts the behaviour when no key is configured.
+    monkeypatch.delenv("MDT_ELEVENLABS_API_KEY", raising=False)
     settings = Settings(db_path=str(tmp_path / "voice-speech.db"), step_delay=0)
     with TestClient(create_app(settings)) as client:
         missing = client.post(
