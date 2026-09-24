@@ -3,7 +3,6 @@ import hashlib
 import hmac
 import os
 import time
-from collections import defaultdict
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from functools import partial
@@ -26,6 +25,7 @@ from mdt.store import Persistence, Store
 from mdt.telemetry import configure
 
 COOKIE = "mdt_presenter"
+MAX_COMMAND_BYTES = 16384
 
 
 class Start(Contract):
@@ -132,7 +132,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
         raise RuntimeError(
             "Cloud deployment requires MDT_PRESENTER_TOKEN of at least 24 characters."
         )
-    auth_attempts: dict[str, list[float]] = defaultdict(list)
+    failed_attempts: dict[str, list[float]] = {}
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -151,6 +151,9 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
             application.state.engine = engine
         yield
         await application.state.engine.close()
+        from mdt.agents import aclose_azure_clients
+
+        await aclose_azure_clients()
 
     application = FastAPI(
         title="MDT Observatory",
@@ -169,10 +172,14 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
                 return JSONResponse({"detail": "Cross-origin commands are not permitted."}, 403)
             if "application/json" not in request.headers.get("content-type", ""):
                 return JSONResponse({"detail": "Commands require application/json."}, 415)
-            length = request.headers.get("content-length", "0")
+            # Without a declared length the body would be read in full before any
+            # size check, so chunked or unsized commands are refused outright.
+            length = request.headers.get("content-length")
+            if length is None or "transfer-encoding" in request.headers:
+                return JSONResponse({"detail": "Commands require Content-Length."}, 411)
             if not length.isdigit():
                 return JSONResponse({"detail": "Invalid Content-Length."}, 400)
-            if int(length) > 16384:
+            if int(length) > MAX_COMMAND_BYTES:
                 return JSONResponse({"detail": "Request exceeds the demo command size limit."}, 413)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -214,7 +221,10 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
 
     @application.get("/readyz")
     async def ready(service: EngineDep) -> dict[str, str]:
-        service.store.count()
+        try:
+            await service.ready()
+        except Exception as exc:
+            raise HTTPException(503, "Persistent storage is not ready.") from exc
         return {"status": "ready"}
 
     @application.get("/api/config")
@@ -233,18 +243,21 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     async def login(body: Login, request: Request, response: Response) -> dict[str, bool]:
         if not config.presenter_token:
             return {"authenticated": True}
-        host = request.client.host if request.client else "unknown"
-        now = time.monotonic()
-        attempts = [t for t in auth_attempts[host] if now - t < 60]
-        auth_attempts[host] = attempts
-        if len(attempts) >= 10:
-            raise HTTPException(429, "Too many access attempts. Wait one minute.")
-        attempts.append(now)
-        if len(auth_attempts) > 2048:
-            for key in list(auth_attempts)[:1024]:
-                if not auth_attempts[key] or now - auth_attempts[key][-1] >= 60:
-                    del auth_attempts[key]
+        # A correct token is never throttled, so failures from others (who may share
+        # an address behind the ingress) cannot lock the presenter out. Only failed
+        # attempts count toward the per-client limit.
         if not hmac.compare_digest(body.token, config.presenter_token):
+            host = request.client.host if request.client else "unknown"
+            now = time.monotonic()
+            attempts = [t for t in failed_attempts.get(host, []) if now - t < 60]
+            if len(attempts) >= 10:
+                failed_attempts[host] = attempts
+                raise HTTPException(429, "Too many access attempts. Wait one minute.")
+            attempts.append(now)
+            failed_attempts[host] = attempts
+            if len(failed_attempts) > 2048:
+                for key in [k for k, v in failed_attempts.items() if now - v[-1] >= 60]:
+                    del failed_attempts[key]
             raise HTTPException(401, "Invalid presenter token.")
         response.set_cookie(
             COOKIE,
@@ -258,7 +271,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
 
     @application.get("/api/meeting", dependencies=protected)
     async def latest(service: EngineDep) -> Meeting | None:
-        return service.active
+        return await service.current()
 
     @application.get("/api/room/stream", dependencies=protected)
     async def room_stream(service: EngineDep, request: Request) -> StreamingResponse:
@@ -268,8 +281,9 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
         previous case, both receive the current room state here; no manual reload.
         """
         queue: asyncio.Queue[str] = asyncio.Queue(maxsize=2)
+        initial_room = await service.room_state()
         service.room_subscribers.add(queue)
-        queue.put_nowait(service.room_snapshot())
+        queue.put_nowait(initial_room)
         return snapshot_stream(
             request, queue, "room", config.presenter_token, lambda: _discard_room(service, queue)
         )
@@ -304,11 +318,11 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
 
     @application.get("/api/meetings/{meeting_id}", dependencies=protected)
     async def meeting(meeting_id: str, service: EngineDep) -> Meeting:
-        return service.get(meeting_id)
+        return await service.load(meeting_id)
 
     @application.get("/api/meetings/{meeting_id}/stream", dependencies=protected)
     async def stream(meeting_id: str, service: EngineDep, request: Request) -> StreamingResponse:
-        initial = service.get(meeting_id)
+        initial = await service.load(meeting_id)
         queue: asyncio.Queue[str] = asyncio.Queue(maxsize=2)
         service.subscribers.setdefault(meeting_id, set()).add(queue)
         queue.put_nowait(initial.model_dump_json())
@@ -346,7 +360,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
 
     @application.get("/api/meetings/{meeting_id}/export", dependencies=protected)
     async def export(meeting_id: str, service: EngineDep) -> Response:
-        result = service.get(meeting_id)
+        result = await service.load(meeting_id)
         return Response(
             result.model_dump_json(indent=2),
             media_type="application/json",

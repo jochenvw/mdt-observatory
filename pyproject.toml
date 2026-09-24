@@ -13,7 +13,6 @@ dependencies = [
   "azure-storage-blob>=12.25,<13",
   "azure-monitor-opentelemetry>=1.6,<2",
   "opentelemetry-instrumentation-fastapi>=0.52b0,<1",
-  "httpx>=0.28,<1",
   "httpx2>=2.13,<3",
 ]
 
@@ -25,6 +24,7 @@ dev = [
   "ruff>=0.11,<1",
   "mypy>=1.15,<3",
   "playwright>=1.51,<2",
+  "httpx>=0.28,<1",
 ]
 
 [build-system]
@@ -37,6 +37,11 @@ packages = ["src/mdt"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Starlette's TestClient still references the deprecated anyio.abc alias
+# (starlette/testclient.py). Scoped to that message so our own deprecations surface.
+filterwarnings = [
+  "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
+]
 
 [tool.ruff]
 target-version = "py312"

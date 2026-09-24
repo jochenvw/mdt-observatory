@@ -206,3 +206,22 @@ def test_a_partial_lesion_mapping_yields_no_derived_comparison() -> None:
     assert agents._lesion_comparison(partial) is None
     assert agents._lesion_comparison(None) is None
     assert agents._lesion_comparison([]) is None
+
+
+def test_lesion_comparison_wording_comes_from_the_mapping_and_its_case() -> None:
+    """Shared code derives counts; it never carries another case's findings."""
+    three = [{"baseline_diameter_mm": 10, "response_diameter_mm": 5} for _ in range(3)]
+    derived = agents._lesion_comparison(three)
+    assert derived is not None
+    context, observations = derived
+    text = " ".join([context["method"], *observations])
+    assert "3-site" in text and "All 3 original mapped sites" in text
+    for foreign in ("nine", "Nine", "MRI", "S1-IVC", "S4a-MHV", "lung nodule"):
+        assert foreign not in text
+    crc = get_case(str(CASE["id"]))
+    context, observations = agents._lesion_comparison(CASE["lesion_mapping"], crc.runtime) or (
+        {}, [],
+    )
+    assert context["method"] == crc.runtime.lesion_method
+    assert observations[0] == "All 9 original MRI liver sites remain represented."
+    assert observations[-len(crc.runtime.lesion_notes):] == crc.runtime.lesion_notes

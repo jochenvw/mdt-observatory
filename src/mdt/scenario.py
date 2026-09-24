@@ -525,6 +525,15 @@ _EXTRA_OBSERVATIONS: dict[Role, list[str]] = {
 OBSERVATIONS: dict[Role, list[str]] = {
     role: [_CASE_RECORD_PASSAGES[role.value], *_EXTRA_OBSERVATIONS.get(role, [])] for role in Role
 }
+LESION_SITES_LABEL = "MRI liver"
+LESION_METHOD = (
+    "Descriptive sum of nine MRI longest diameters, NOT a formal RECIST "
+    "target set or measured volumetry; CT partial response is source-reported."
+)
+LESION_NOTES = [
+    "CT reports partial response; S1-IVC 3 mm, S4a-MHV 2 mm and a stable "
+    "5 mm lung nodule require explicit review.",
+]
 
 
 MEMORIES: list[Memory] = [

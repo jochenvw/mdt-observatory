@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
 import httpx2
@@ -17,6 +17,12 @@ from mdt.models import Position, Role
 from mdt.scenario import CASE, EVIDENCE, MEMORIES, ROLE_CONTEXTS, ROLE_LABELS
 
 ADDED_CASE_IDS = ("CASE-MDT-CRC-WT-2026-002", "CASE-MDT-PDAC-PERIOP-2026-003")
+
+
+@pytest.fixture(autouse=True)
+async def _close_cached_azure_clients() -> AsyncIterator[None]:
+    yield
+    await agents.aclose_azure_clients()
 
 
 @pytest.mark.parametrize("case_id", ADDED_CASE_IDS)
@@ -127,6 +133,7 @@ async def test_added_case_live_sdk_tool_loop_is_case_bound(
     )
     assert output["context"] == get_case(case_id).contexts[Role.RADIOLOGY]
     assert all(item["url"].startswith(f"case://{case_id}/") for item in output["evidence"])
+    await agents.aclose_azure_clients()
     assert all(client.is_closed for client in clients)
 
 
@@ -167,6 +174,7 @@ async def test_added_case_live_followup_requires_own_applicability_tool(
     assert outputs[-1]["conditional_applicability"] is True
     assert outputs[-1]["context_reference"] == "Full role context in the first tool output"
     assert outputs[-1]["evidence"] == []
+    await agents.aclose_azure_clients()
     assert all(client.is_closed for client in clients)
 
 
@@ -542,6 +550,7 @@ async def test_azure_executes_selected_tools_and_real_sdk_strict_parse(
         "analysis_total_tokens",
         "step",
     }
+    await agents.aclose_azure_clients()
     assert all(client.is_closed for client in clients)
 
 
@@ -606,6 +615,7 @@ async def test_azure_failure_is_explicit_without_rehearsal_fallback(
     with pytest.raises(AgentRuntimeError):
         await _run(Role.PATHOLOGY, mode="azure", emit=emit)
     assert requests
+    await agents.aclose_azure_clients()
     assert all(client.is_closed for client in clients)
     assert any(payload.get("error") for payload in events)
 
@@ -616,6 +626,7 @@ async def test_azure_tool_budget_and_client_cleanup(monkeypatch: pytest.MonkeyPa
     _, clients = _mock_azure(monkeypatch, [response])
     with pytest.raises(AgentRuntimeError, match="hard budget"):
         await _run(Role.PATHOLOGY, mode="azure")
+    await agents.aclose_azure_clients()
     assert all(client.is_closed for client in clients)
 
 
@@ -694,6 +705,7 @@ async def test_token_budget_prevents_request(monkeypatch: pytest.MonkeyPatch) ->
     with pytest.raises(AgentRuntimeError, match="Token budget"):
         await _run(Role.PATHOLOGY, mode="azure")
     assert not requests
+    await agents.aclose_azure_clients()
     assert all(client.is_closed for client in clients)
 
 
@@ -757,6 +769,7 @@ async def test_transport_retry_is_bounded_without_repeating_tools_or_falling_bac
     assert "no new conclusion" in retries[0]["summary"]
     tool_starts = [payload for event, payload in events if event == "ToolStarted"]
     assert len(tool_starts) == (0 if failures == 2 and failed_stage == "tool" else 1)
+    await agents.aclose_azure_clients()
     assert all(client.is_closed for client in clients)
 
 
@@ -821,6 +834,7 @@ async def test_transport_retry_does_not_retry_other_service_errors(
     with pytest.raises(AgentRuntimeError):
         await _run(Role.PATHOLOGY, mode="azure")
     assert len(requests) == 1
+    await agents.aclose_azure_clients()
     assert all(client.is_closed for client in clients)
 
 
@@ -874,7 +888,10 @@ async def test_azure_credential_provider_and_clients_are_closed(
     monkeypatch.setattr(agents, "get_bearer_token_provider", provider)
     await _run(Role.PATHOLOGY, mode="azure")
     assert token_requests
+    assert closed == []
+    await agents.aclose_azure_clients()
     assert closed == [True]
+    await agents.aclose_azure_clients()
     assert all(client.is_closed for client in clients)
 
 
@@ -897,6 +914,7 @@ async def test_azure_response_failures_remain_visible(
     _, clients = _mock_azure(monkeypatch, [response])
     with pytest.raises(AgentRuntimeError):
         await _run(Role.PATHOLOGY, mode="azure")
+    await agents.aclose_azure_clients()
     assert all(client.is_closed for client in clients)
 
 
@@ -1001,6 +1019,7 @@ async def test_429_retry_is_bounded_and_preserves_client_cleanup(
         result = await _run(Role.PATHOLOGY, mode="azure")
         assert result.role == Role.PATHOLOGY
         assert len(requests) == rate_limits + 2
+    await agents.aclose_azure_clients()
     assert all(client.is_closed for client in clients)
 
 
@@ -1099,9 +1118,10 @@ async def test_request_pacing_is_shared_across_complete_role_loops(
         return agents.Response.model_construct()
 
     async def fake_live(state: RunState, emit: agents.Emit) -> Position:
-        await agents._azure_request(request, emit)
+        interval = state.settings.azure_request_interval_seconds
+        await agents._azure_request(request, emit, interval_seconds=interval)
         await agents._execute_tool(state, agents.CORE_TOOLS[state.role], "{}", emit)
-        await agents._azure_request(request, emit)
+        await agents._azure_request(request, emit, interval_seconds=interval)
         return agents._rehearsal_position(state)
 
     monkeypatch.setattr(agents, "_azure_position", fake_live)
@@ -1129,7 +1149,7 @@ async def test_explicit_application_settings_control_model_request_pacing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     expected = await _run(Role.PATHOLOGY)
-    intervals: list[float | None] = []
+    intervals: list[float] = []
     original = agents._azure_request
 
     def respond(body: dict[str, Any]) -> dict[str, Any]:
@@ -1141,7 +1161,7 @@ async def test_explicit_application_settings_control_model_request_pacing(
         request: Callable[[], Awaitable[agents.Response]],
         emit: agents.Emit,
         *,
-        interval_seconds: float | None = None,
+        interval_seconds: float,
     ) -> agents.Response:
         intervals.append(interval_seconds)
         return await original(request, emit, interval_seconds=interval_seconds)
@@ -1233,4 +1253,64 @@ async def test_api_error_reports_safe_identifiers_without_response_body(
     assert "DO-NOT-LOG" not in json.dumps(errors)
     assert "DO-NOT-LOG" not in str(captured.value)
     assert captured.value.__suppress_context__
+    await agents.aclose_azure_clients()
     assert all(client.is_closed for client in clients)
+
+
+async def test_azure_client_is_reused_across_role_analyses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected = await _run(Role.PATHOLOGY)
+
+    def respond(body: dict[str, Any]) -> dict[str, Any]:
+        if "text" in body:
+            return _completion(content=expected.model_dump_json())
+        return _completion(tool="inspect_pathology")
+
+    requests, clients = _mock_azure(monkeypatch, respond)
+    monkeypatch.delenv("AZURE_OPENAI_API_KEY")
+    credentials: list[object] = []
+    token_requests: list[str] = []
+
+    class Credential:
+        def __init__(self) -> None:
+            credentials.append(self)
+
+        def __enter__(self) -> "Credential":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            pass
+
+    def provider(credential: Credential, scope: str) -> Callable[..., Any]:
+        def token() -> str:
+            token_requests.append(scope)
+            return "demo-test-token"
+
+        return token
+
+    monkeypatch.setattr(agents, "DefaultAzureCredential", Credential)
+    monkeypatch.setattr(agents, "get_bearer_token_provider", provider)
+    await asyncio.gather(*(_run(Role.PATHOLOGY, mode="azure") for _ in range(3)))
+    assert len(requests) == 6
+    assert len(credentials) == 1
+    assert len(clients) == 1
+    assert not clients[0].is_closed
+    await agents.aclose_azure_clients()
+    assert clients[0].is_closed
+
+
+async def test_azure_client_rebuilds_when_endpoint_or_key_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "demo-test-key")
+    first = await agents._azure_client("https://one.openai.azure.com")
+    assert await agents._azure_client("https://one.openai.azure.com") is first
+    second = await agents._azure_client("https://two.openai.azure.com")
+    assert second is not first and first.is_closed()
+    assert str(second.base_url) == "https://two.openai.azure.com/openai/v1/"
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "rotated-test-key")
+    third = await agents._azure_client("https://two.openai.azure.com")
+    assert third is not second and second.is_closed()
+    await agents.aclose_azure_clients()
+    assert third.is_closed()

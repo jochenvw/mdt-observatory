@@ -38,6 +38,9 @@ class BlobStore:
         )
         self.container = self.client.get_container_client(container_name)
         self.etags: dict[str, str] = {}
+        # Safe only because one replica is the sole writer (ETags reject others):
+        # after one full listing, new meetings are counted as they are created.
+        self._meeting_count: int | None = None
         try:
             self.container.get_container_properties()
         except Exception:
@@ -67,7 +70,8 @@ class BlobStore:
             "metadata": metadata,
             "content_settings": ContentSettings(content_type="application/json"),
         }
-        if name in self.etags:
+        create = name not in self.etags
+        if not create:
             options["etag"] = self.etags[name]
             options["match_condition"] = MatchConditions.IfNotModified
         with tracer.start_as_current_span(
@@ -76,22 +80,27 @@ class BlobStore:
         ):
             try:
                 response = self.container.get_blob_client(name).upload_blob(
-                    payload.encode("utf-8"), overwrite=name in self.etags, **options
+                    payload.encode("utf-8"), overwrite=not create, **options
                 )
             except Exception:
                 self.etags.pop(name, None)
+                if create:
+                    # The blob may exist despite the error; recount on next use.
+                    self._meeting_count = None
                 raise
         etag = response.get("etag")
         if not isinstance(etag, str):
             raise ValueError("Blob persistence returned no write ETag.")
         self.etags[name] = etag
+        # A create-only upload succeeds only when the blob did not exist.
+        if create and name.startswith("meetings/") and self._meeting_count is not None:
+            self._meeting_count += 1
 
     def save(self, meeting: Meeting) -> None:
-        self._write(
-            f"meetings/{meeting.id}.json",
-            meeting.model_dump_json(),
-            {"created_at": meeting.created_at},
-        )
+        self.save_snapshot(meeting.id, meeting.created_at, meeting.model_dump_json())
+
+    def save_snapshot(self, meeting_id: str, created_at: str, payload: str) -> None:
+        self._write(f"meetings/{meeting_id}.json", payload, {"created_at": created_at})
 
     def get(self, meeting_id: str) -> Meeting | None:
         payload = self._read(f"meetings/{quote(meeting_id, safe='')}.json")
@@ -115,7 +124,18 @@ class BlobStore:
         return Meeting.model_validate_json(payload)
 
     def count(self) -> int:
-        return sum(1 for _ in self.container.list_blobs(name_starts_with="meetings/"))
+        if self._meeting_count is None:
+            self._meeting_count = sum(
+                1 for _ in self.container.list_blobs(name_starts_with="meetings/")
+            )
+        return self._meeting_count
+
+    def ready(self) -> None:
+        """One bounded data-plane call: identity, RBAC, private DNS and container."""
+        pages = self.container.list_blobs(
+            name_starts_with="meetings/", results_per_page=1
+        ).by_page()
+        next(iter(pages), None)
 
     @staticmethod
     def _memory_name(memory: Memory) -> str:

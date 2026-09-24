@@ -181,6 +181,7 @@ try {
             Assert-True ($environment.Contains("createObject('name', '$($setting.Env)', 'value', string(parameters('$($setting.Name)')))")) 'ACA must receive each scheduling value as a string.'
         }
         Assert-True ($environment.StartsWith("[if(parameters('bootstrap'), createArray(),")) 'Bootstrap must retain an empty environment.'
+        Assert-True ($environment.Contains("createObject('name', 'FORWARDED_ALLOW_IPS', 'value', variables('acaSubnetPrefix'))")) 'Forwarded client addresses must be trusted only from the ACA subnet.'
         Assert-True ($app.properties.configuration.activeRevisionsMode -eq 'Multiple') 'Manual revision control must remain enabled.'
         Assert-True ($app.properties.template.scale.minReplicas -eq 1 -and $app.properties.template.scale.maxReplicas -eq 1) 'Role concurrency must not change single-replica scaling.'
         Assert-True ($app.properties.template.PSObject.Properties.Name -notcontains 'volumes') 'Blob app must not introduce storage volumes.'

@@ -6,10 +6,14 @@ from mdt.models import Meeting, Memory
 
 
 class Persistence(Protocol):
+    """Synchronous storage contract; the engine calls it from one worker thread."""
+
     def save(self, meeting: Meeting) -> None: ...
+    def save_snapshot(self, meeting_id: str, created_at: str, payload: str) -> None: ...
     def get(self, meeting_id: str) -> Meeting | None: ...
     def latest(self) -> Meeting | None: ...
     def count(self) -> int: ...
+    def ready(self) -> None: ...
     def memories(
         self, seeds: list[Memory], clinician_id: str = "demo-clinician"
     ) -> list[Memory]: ...
@@ -54,17 +58,22 @@ class Store:
 
     def save_memory(self, memory: Memory) -> None:
         with self.connection:
-            self.connection.execute(
+            cursor = self.connection.execute(
                 "UPDATE memories SET snapshot=? WHERE id=? AND clinician_id=?",
                 (memory.model_dump_json(), memory.id, memory.clinician_id),
             )
+            if cursor.rowcount != 1:
+                raise ValueError("Cannot update a memory that has not been initialized.")
 
     def save(self, meeting: Meeting) -> None:
+        self.save_snapshot(meeting.id, meeting.created_at, meeting.model_dump_json())
+
+    def save_snapshot(self, meeting_id: str, created_at: str, payload: str) -> None:
         with self.connection:
             self.connection.execute(
                 "INSERT INTO meetings VALUES (?, ?, ?) "
                 "ON CONFLICT(id) DO UPDATE SET snapshot=excluded.snapshot",
-                (meeting.id, meeting.created_at, meeting.model_dump_json()),
+                (meeting_id, created_at, payload),
             )
 
     def get(self, meeting_id: str) -> Meeting | None:
@@ -81,6 +90,9 @@ class Store:
 
     def count(self) -> int:
         return int(self.connection.execute("SELECT COUNT(*) FROM meetings").fetchone()[0])
+
+    def ready(self) -> None:
+        self.connection.execute("SELECT 1").fetchone()
 
     def close(self) -> None:
         self.connection.close()

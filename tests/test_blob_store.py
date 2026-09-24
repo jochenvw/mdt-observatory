@@ -1,3 +1,5 @@
+import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
@@ -15,6 +17,7 @@ from mdt.agents import analyze
 from mdt.config import Settings
 from mdt.engine import Engine
 from mdt.models import Meeting, Memory, Role
+from mdt.store import Persistence, Store
 
 ACCOUNT = "https://example.blob.core.windows.net"
 
@@ -24,6 +27,7 @@ class FakeContainer:
         self.records: dict[str, dict[str, Any]] = {}
         self.counter = 0
         self.available = True
+        self.listings: list[int | None] = []
 
     def get_container_properties(self) -> dict[str, str]:
         if not self.available:
@@ -67,13 +71,21 @@ class FakeContainer:
 
         return SimpleNamespace(upload_blob=upload_blob)
 
-    def list_blobs(self, *, name_starts_with: str, **kwargs: Any) -> list[Any]:
+    def list_blobs(self, *, name_starts_with: str, **kwargs: Any) -> "FakePaged":
         self.get_container_properties()
-        return [
+        self.listings.append(kwargs.get("results_per_page"))
+        return FakePaged(
             SimpleNamespace(name=name, metadata=record["metadata"])
             for name, record in self.records.items()
             if name.startswith(name_starts_with)
-        ]
+        )
+
+
+class FakePaged(list[Any]):
+    """Eager stand-in for azure.core.paging.ItemPaged."""
+
+    def by_page(self) -> Any:
+        return iter([iter(self)])
 
 
 @pytest.fixture
@@ -162,6 +174,50 @@ def test_explicit_memory_and_persistent_forget(cloud: FakeContainer) -> None:
     restored.close()
 
 
+def _seed() -> Memory:
+    return Memory(
+        id="preference",
+        role=Role.RADIOLOGY,
+        category="CLINICIAN_PREFERENCE",
+        text="Inspect the growth trajectory.",
+        source="Synthetic clinician note",
+        date="2026-09-16",
+    )
+
+
+def _open(backend: str, tmp_path: Path) -> Persistence:
+    if backend == "blob":
+        return blob_store.BlobStore(ACCOUNT, "mdt-state")
+    return Store(str(tmp_path / "contract.db"))
+
+
+@pytest.mark.parametrize("backend", ["sqlite", "blob"])
+def test_save_memory_rejects_uninitialized_memory(
+    backend: str, cloud: FakeContainer, tmp_path: Path
+) -> None:
+    store = _open(backend, tmp_path)
+    with pytest.raises(ValueError, match="not been initialized"):
+        store.save_memory(_seed())
+    store.close()
+
+
+@pytest.mark.parametrize("backend", ["sqlite", "blob"])
+def test_forget_persists_across_reload(
+    backend: str, cloud: FakeContainer, tmp_path: Path
+) -> None:
+    store = _open(backend, tmp_path)
+    memory = store.memories([_seed()])[0]
+    memory.status = "FORGOTTEN"
+    memory.text = ""
+    memory.source = ""
+    store.save_memory(memory)
+    store.close()
+    restored = _open(backend, tmp_path)
+    reloaded = restored.memories([_seed()])[0]
+    assert (reloaded.status, reloaded.text, reloaded.source) == ("FORGOTTEN", "", "")
+    restored.close()
+
+
 def test_missing_container_is_not_empty_success(cloud: FakeContainer) -> None:
     cloud.available = False
     with pytest.raises(ResourceNotFoundError):
@@ -173,7 +229,57 @@ def test_disappeared_container_is_not_missing_meeting(cloud: FakeContainer) -> N
     cloud.available = False
     with pytest.raises(ResourceNotFoundError):
         store.get("missing")
+    with pytest.raises(ResourceNotFoundError):
+        store.ready()
     store.close()
+
+
+def test_readiness_lists_one_page(cloud: FakeContainer) -> None:
+    store = blob_store.BlobStore(ACCOUNT, "mdt-state")
+    for index in range(5):
+        store.save(Meeting(id=f"meeting-{index}"))
+    cloud.listings.clear()
+    store.ready()
+    assert cloud.listings == [1]
+    store.close()
+
+
+def test_count_cache_tracks_new_meetings_and_restart(cloud: FakeContainer) -> None:
+    store = blob_store.BlobStore(ACCOUNT, "mdt-state")
+    store.save(Meeting(id="before-count"))
+    assert store.count() == 1
+    listed = len(cloud.listings)
+    meeting = Meeting(id="counted")
+    store.save(meeting)
+    meeting.round = 2
+    store.save(meeting)
+    assert store.count() == 2
+    assert len(cloud.listings) == listed, "cached count must not relist"
+    cloud.available = False
+    with pytest.raises(ResourceNotFoundError):
+        store.save(Meeting(id="failed"))
+    cloud.available = True
+    assert store.count() == 2
+    store.close()
+    restarted = blob_store.BlobStore(ACCOUNT, "mdt-state")
+    assert restarted.count() == 2
+    restarted.close()
+
+
+async def test_blob_retention_limit_uses_the_cached_count(
+    cloud: FakeContainer, tmp_path: Path
+) -> None:
+    from mdt.engine import Conflict
+
+    settings = Settings(db_path=str(tmp_path / "unused.db"), step_delay=0, max_meetings=2)
+    engine = Engine(blob_store.BlobStore(ACCOUNT, "mdt-state"), settings, analyze)
+    for _ in range(2):
+        await engine.start("rehearsal")
+        while engine.tasks:
+            await asyncio.gather(*list(engine.tasks))
+    with pytest.raises(Conflict, match="retention limit"):
+        await engine.start("rehearsal")
+    await engine.close()
 
 
 def test_corrupt_creation_metadata_is_visible(cloud: FakeContainer) -> None:

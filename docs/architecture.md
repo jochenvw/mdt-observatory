@@ -90,7 +90,16 @@ The UI never displays raw model chain of thought.
 
 An event has a meeting ID, monotonic sequence, timestamp, type, optional role
 and structured payload. Every event persists a transactional snapshot before
-it is broadcast. SSE transports complete snapshots; bounded subscriber queues
+it is broadcast. The chair serializes the meeting once per event; the same bytes
+are written to storage and sent to every stream. Storage calls run on one
+dedicated worker thread, so a slow Blob write never blocks the event loop, health
+probes or open streams, while the single worker keeps writes in event order and
+the chair lock still admits one transition at a time. Reads of the active meeting
+take the same lock, so they never observe a half-applied transition.
+`EvidenceFound` events and activity reference evidence already held in the
+meeting by `evidence_id`; a record that differs from the meeting's copy is kept
+in full, so exports remain a complete audit record.
+SSE transports complete snapshots; bounded subscriber queues
 coalesce intermediate renders without deleting persisted audit events. Reconnect
 always receives the latest full state, so a stale event cursor cannot drop state.
 
@@ -132,13 +141,19 @@ event history. Managed identity and a private endpoint comply with inherited
 policies that prohibit public storage access and REST Shared Key authentication.
 ETags reject stale writes. This is not a distributed event store or a multi-writer
 service; deployment deliberately allows one active revision and replica.
+Whole-snapshot writes keep recovery trivial but rewrite static dossier content on
+every event (19–40 MB per initial rehearsal round, depending on the case); an
+append-only event log would cut this further at the cost of the snapshot invariant.
 Within that process, independent specialist reviews can overlap. Concurrency is
 configurable from one to seven (default three); request pacing and provider
 cooldowns are shared across roles. Increasing concurrency does not create more
 model quota or relax the chair's review and concurrence gates.
 
 Model requests allow 90 seconds of read inactivity, with 10-second connection
-and pool limits and a 30-second write limit. One timeout/connection retry is
+and pool limits and a 30-second write limit. All roles share one model client
+and managed-identity credential per process, so tokens and connections are reused;
+a changed endpoint or key rebuilds it, and application shutdown closes it.
+One timeout/connection retry is
 allowed per request after a two-second pause and the existing shared pacing.
 Rate-limit retries retain their separate two-retry budget and server cooldown.
 Retries stay inside the existing 300-second active-role deadline; they do not
