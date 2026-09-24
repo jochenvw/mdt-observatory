@@ -21,7 +21,7 @@ function cohortWith(overrides: Partial<Cohort> = {}): Cohort {
       date_range: '2019–2025', refreshed: '2026-08-01', governance: 'Synthetic demonstration cohort.',
     },
     governed_total: 400, matched: 44, match_percentage: 11, exact_matches: 8, near_matches: 36,
-    criteria: [criterion(), criterion({ key: 'molecular_profile', label: 'Molecular profile', status: 'PENDING', enabled: false, reason: 'The extended panel is still pending.', awaiting: 'The pending molecular panel' })],
+    criteria: [criterion(), criterion({ key: 'molecular_profile', label: 'Molecular profile', status: 'PENDING', enabled: false, reason: 'The extended panel is still pending.', awaiting: 'The pending extended molecular panel would allow molecular matching.' })],
     ignored_criteria: ['Relevant comorbidities'], unavailable_in_case: ['Molecular profile'],
     unavailable_in_cohort: ['Prior procedures'],
     why_these_cases: 'These cases match on 1 criterion selected from the current record.',
@@ -61,7 +61,7 @@ describe('cohort formatting', () => {
     const notes = degraded(cohortWith());
     expect(notes).toHaveLength(1);
     expect(notes[0]).toContain('The cohort is broader than requested.');
-    expect(notes[0]).toContain('The pending molecular panel would narrow it.');
+    expect(notes[0]).toContain('The pending extended molecular panel would allow molecular matching.');
   });
 });
 

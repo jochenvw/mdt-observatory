@@ -68,6 +68,7 @@ Operational errors do not appear as the next clinical question.
 | 0:40 | Return to chair; request targeted follow-up | Only relevant roles investigate remaining questions |
 | 0:50 | Inspect Research / Protocol and click a claim | Source, region, access, applicability and limitations |
 | 1:00 | Compare three management options and the conditional proposal | Local treatment now, further systemic therapy, or deferred local treatment; no automatic surgery decision |
+| 1:02 | Scroll to Similar cases; remove a criterion, then apply the pending molecular result | The matched cohort, denominators and warnings recalculate; what comparable boards recorded stays separate from what those patients experienced |
 | 1:05 | Concur from the roles awaiting human review | Version-bound human sign-offs arrive centrally |
 | 1:15 | Open the captured decision and export | Complete provenance, evidence and human contributions |
 
@@ -83,6 +84,13 @@ unresolved questions. Humans intervene where judgment changes the outcome."
 Do not claim that illustrative confidence is medical probability, the curated
 searches are live research, the unavailable protocol was read, or the system
 is clinically validated. This is an interaction-model demonstrator.
+
+For Similar cases, say what the cohort is: "Among the comparable historical cases
+in this synthetic cohort, this many boards recorded additional diagnostics first."
+Do not say that an approach worked better, was preferred or is recommended, and
+do not connect a recorded decision to a recorded outcome as cause and effect.
+Quote a finding into the discussion only with its denominator and cohort
+definition; the board still decides.
 
 ## Case fidelity checkpoints
 

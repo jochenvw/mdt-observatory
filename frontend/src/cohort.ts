@@ -90,5 +90,5 @@ export function criterionState(report: CriterionReport): string {
 export function degraded(cohort: Cohort): string[] {
   return cohort.criteria
     .filter(report => report.status !== 'AVAILABLE')
-    .map(report => `${report.label}: ${report.reason} The cohort is broader than requested.${report.awaiting ? ` ${report.awaiting} would narrow it.` : ''}`);
+    .map(report => `${report.label}: ${report.reason} The cohort is broader than requested.${report.awaiting ? ` ${report.awaiting}` : ''}`);
 }
