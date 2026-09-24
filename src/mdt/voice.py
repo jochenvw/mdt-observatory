@@ -103,7 +103,9 @@ VOICE_AGENTS: tuple[VoiceAgent, ...] = (
         key="pathology",
         role=Role.PATHOLOGY,
         label="Pathologist",
-        persona="Tissue and molecular specialist who separates confirmed findings from assumptions.",
+        persona=(
+            "Tissue and molecular specialist who separates confirmed findings from assumptions."
+        ),
         elevenlabs_voice_id="ErXwobaYiN019PkySvjV",
         preview_text="I will state which tissue findings are confirmed.",
     ),
@@ -119,7 +121,9 @@ VOICE_AGENTS: tuple[VoiceAgent, ...] = (
         key="radiation_oncology",
         role=Role.PROTOCOL,
         label="Radiation oncologist",
-        persona="Local-treatment specialist who flags pathway limits and radiotherapy considerations.",
+        persona=(
+            "Local-treatment specialist who flags pathway limits and radiotherapy considerations."
+        ),
         elevenlabs_voice_id="TxGEqnHWrfWFTfGW9XjX",
         preview_text="I will keep local treatment options conditional on human review.",
     ),
@@ -272,8 +276,14 @@ def route_voice_contribution(meeting: Meeting, contribution: VoiceContribution) 
         )
     ]
     if not targets:
-        friction_roles = {role for item in meeting.frictions if not item.resolved for role in item.roles}
-        targets = [_role_agent(role) for role in friction_roles] or [agent_by_key("chair")]
+        friction_roles = {
+            role for item in meeting.frictions if not item.resolved for role in item.roles
+        }
+        targets = [_role_agent(role) for role in friction_roles]
+        if not targets:
+            chair = agent_by_key("chair")
+            if chair is not None:
+                targets = [chair]
     routed = [agent for agent in targets if agent is not None]
     turns = [
         VoiceTurn(
