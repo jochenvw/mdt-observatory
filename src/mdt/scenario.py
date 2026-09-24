@@ -551,3 +551,50 @@ MEMORIES: list[Memory] = [
            text="Separate systemic response, conversion utility and stage III ctDNA prognosis.",
            source="Demonstration MDT reflection; not evidence", date="2026-09-16"),
 ]
+
+
+# Characteristics this case offers to the descriptive similar-case comparison.
+# Availability is taken from the case record: unavailable characteristics are
+# disabled and explained rather than matched on or read as negative findings.
+COHORT_PROFILE: dict[str, Any] = {
+    "characteristics": {
+        "cancer_type": {"values": ["Colorectal"], "display": "Colorectal adenocarcinoma"},
+        "primary_site": {
+            "values": ["Right-sided colon"], "display": "Ascending (right-sided) colon",
+        },
+        "stage": {"values": ["Stage IV"], "display": "cT3 cN1b cM1a · Stage IVA"},
+        "metastatic_sites": {
+            "values": ["Liver"],
+            "display": "Bilobar liver metastases; no confirmed extrahepatic site",
+        },
+        "metastatic_burden": {
+            "values": [], "status": "PENDING", "display": "Not classified",
+            "reason": "the indeterminate 5 mm lung nodule has not been characterised, so the "
+                      "recorded burden is incomplete.",
+            "awaiting": "Characterisation of the 5 mm lung nodule would allow burden matching.",
+            "pending_values": ["Multifocal"],
+        },
+        "molecular_profile": {
+            "values": ["BRAF V600E", "pMMR / MSS", "RAS wild type", "HER2 not amplified"],
+            "display": "BRAF V600E, pMMR/MSS, RAS wild type, HER2 not amplified",
+        },
+        "performance_status": {"values": ["ECOG 1"], "display": "ECOG 1"},
+        "age_band": {"values": ["50–59"], "display": "50–59"},
+        "previous_lines": {
+            "values": ["1 previous line"], "display": "One systemic line (four cycles)",
+        },
+        "prior_procedures": {
+            "values": [], "status": "MISSING", "display": "None recorded",
+            "reason": "no prior oncological procedure is recorded for this case.",
+            "awaiting": "A recorded procedure history would allow procedure matching.",
+        },
+        "comorbidities": {
+            "values": ["Hypertension", "Type 2 diabetes"],
+            "display": "Controlled hypertension and type 2 diabetes",
+        },
+        "decision_point": {
+            "values": ["Post-induction local-treatment review"],
+            "display": "Post-induction local-treatment review",
+        },
+    },
+}

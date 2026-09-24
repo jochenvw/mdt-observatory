@@ -6,6 +6,7 @@ from typing import Any
 from uuid import uuid4
 
 from mdt.case_registry import case_ids, get_case
+from mdt.cohort import build_cohort, reference_statement
 from mdt.communications import (
     AUTHOR_ROLE,
     LETTER_LANGUAGE,
@@ -996,6 +997,48 @@ class Engine:
                 meeting.busy = True
                 await self._event("HumanGuidanceReceived", {"summary": note}, memory.role)
                 self._spawn([memory.role], "followup")
+            return meeting.model_copy(deep=True)
+
+    async def cohort_reference(
+        self,
+        meeting_id: str,
+        criteria: list[str] | None,
+        resolved: list[str],
+        reference: str,
+    ) -> Meeting:
+        """Quote one similar-case finding in the discussion, definition included.
+
+        The reference is recorded as descriptive context with its cohort definition,
+        denominator and provenance. It never changes the plan, the phase, existing
+        concurrence or any specialist position: people still decide.
+        """
+        async with self.lock:
+            meeting = self._editable(meeting_id)
+            case_id = str(meeting.case["id"])
+        profile = get_case(case_id).cohort_profile
+        try:
+            # Matching is CPU-bound and pure; it runs off the loop and outside the
+            # chair lock so an analysis round is never delayed by a cohort query.
+            result = await asyncio.to_thread(
+                build_cohort,
+                profile,
+                case_id=case_id,
+                criteria=criteria,
+                resolved=tuple(resolved),
+                minimum=self.settings.cohort_minimum_subgroup,
+            )
+            if result.suppressed:
+                raise Conflict(
+                    f"Only {result.matched} comparable cases match; below the minimum subgroup "
+                    f"size of {result.definition.minimum_subgroup}. Widen the criteria before "
+                    "quoting this cohort."
+                )
+            payload = reference_statement(result, reference)
+        except ValueError as exc:
+            raise Conflict(str(exc)) from exc
+        async with self.lock:
+            meeting = self._editable(meeting_id)
+            await self._event("CohortReferenceAdded", payload)
             return meeting.model_copy(deep=True)
 
     async def retry(self, meeting_id: str) -> Meeting:

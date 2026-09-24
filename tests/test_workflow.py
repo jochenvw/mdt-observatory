@@ -925,3 +925,30 @@ async def test_captured_plans_never_repeat_conditions_or_actions(
     assert len(plan.conditions) == len(set(plan.conditions))
     assert len(plan.actions) == len(set(plan.actions))
     await engine.close()
+    await engine.close()
+
+
+async def test_cohort_reference_is_recorded_without_deciding_the_meeting(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path)
+    meeting_id = await proposal(engine)
+    before = engine.get(meeting_id).model_dump()
+    await engine.cohort_reference(meeting_id, None, [], "decision:additional_diagnostics_first")
+    state = engine.get(meeting_id)
+    event = next(item for item in state.events if item.type == "CohortReferenceAdded")
+    assert "comparable historical cases" in event.payload["summary"]
+    assert event.payload["advisory"] is False
+    assert event.payload["cohort_definition"]["criteria"]
+    assert event.payload["denominator"] == event.payload["cohort_definition"]["matched"]
+    after = state.model_dump()
+    for field in ("phase", "plan", "concurrences", "frictions", "roles", "round", "objections"):
+        assert after[field] == before[field], f"{field} must be unchanged by cohort context"
+    with pytest.raises(Conflict):
+        await engine.cohort_reference(meeting_id, None, [], "decision:not_a_category")
+    for role in Role:
+        if role not in state.concurrences:
+            await engine.concur(meeting_id, role, "Reviewed demonstration proposal.")
+    assert engine.get(meeting_id).phase == Phase.DECISION_CAPTURED
+    with pytest.raises(Conflict):
+        # A captured decision stays immutable; cohort context cannot be appended later.
+        await engine.cohort_reference(meeting_id, None, [], "decision:continue_current_treatment")
+    await engine.close()

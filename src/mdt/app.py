@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlparse
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -18,6 +18,7 @@ from pydantic import Field
 from starlette.middleware.base import RequestResponseEndpoint
 
 from mdt.case_registry import case_ids, get_case
+from mdt.cohort import CohortResult, build_cohort
 from mdt.config import Settings
 from mdt.engine import Conflict, Engine, NotFound, PersistenceFailure
 from mdt.models import Audience, Contract, Meeting, Role
@@ -64,6 +65,14 @@ class CommunicationReviewBody(Contract):
 class CommunicationRegenerate(Contract):
     reviewer: str = Field(min_length=1, max_length=80)
     role: Role | None = None
+
+
+class CohortReference(Contract):
+    """One cohort finding a clinician chooses to quote in the discussion."""
+
+    reference: str = Field(min_length=1, max_length=120)
+    criteria: list[str] | None = Field(default=None, max_length=12)
+    resolved: list[str] = Field(default_factory=list, max_length=12)
 
 
 class MemoryAction(Contract):
@@ -323,6 +332,38 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
             for case in (get_case(identifier).case,)
         ]
 
+    @application.get("/api/cases/{case_id}/cohort", dependencies=protected)
+    async def cohort(
+        case_id: str,
+        criteria: Annotated[list[str] | None, Query(max_length=12)] = None,
+        resolved: Annotated[list[str] | None, Query(max_length=12)] = None,
+        include_cases: bool = False,
+    ) -> CohortResult:
+        """Descriptive comparison against the governed historical cohort.
+
+        Omitting `criteria` preselects the clinically meaningful characteristics the
+        current case actually has; supplying it selects exactly those criteria.
+        """
+        try:
+            definition = get_case(case_id)
+        except ValueError:
+            raise HTTPException(404, "Selected case is not available.") from None
+        selected = None if criteria is None else [key for key in criteria if key]
+        try:
+            # Matching is pure computation over the governed cohort; running it off the
+            # event loop keeps streams, health probes and the chair responsive.
+            return await asyncio.to_thread(
+                build_cohort,
+                definition.cohort_profile,
+                case_id=case_id,
+                criteria=selected,
+                resolved=tuple(resolved or ()),
+                include_cases=include_cases,
+                minimum=config.cohort_minimum_subgroup,
+            )
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
     @application.post("/api/meetings", dependencies=protected, status_code=201)
     async def start(body: Start, service: EngineDep) -> Meeting:
         if body.mode == "azure" and not (
@@ -401,6 +442,15 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     @application.post("/api/meetings/{meeting_id}/memory", dependencies=protected)
     async def memory(meeting_id: str, body: MemoryAction, service: EngineDep) -> Meeting:
         return await service.memory(meeting_id, body.memory_id, body.action)
+
+    @application.post("/api/meetings/{meeting_id}/cohort-reference", dependencies=protected)
+    async def cohort_reference(
+        meeting_id: str, body: CohortReference, service: EngineDep
+    ) -> Meeting:
+        """Record a cohort finding in the discussion. It never decides the meeting."""
+        return await service.cohort_reference(
+            meeting_id, body.criteria, body.resolved, body.reference
+        )
 
     @application.post("/api/meetings/{meeting_id}/retry", dependencies=protected)
     async def retry(meeting_id: str, service: EngineDep) -> Meeting:

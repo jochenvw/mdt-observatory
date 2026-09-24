@@ -3852,5 +3852,90 @@
     "PERIOP-PRETREAT",
     "PERIOP-PONV-RISK",
     "PERIOP-PONV-ACTION"
-  ]
+  ],
+  "cohort_profile": {
+    "characteristics": {
+      "cancer_type": {
+        "values": [
+          "Pancreatic"
+        ],
+        "display": "Pancreatic ductal adenocarcinoma"
+      },
+      "primary_site": {
+        "values": [
+          "Pancreatic head"
+        ],
+        "display": "Pancreatic head"
+      },
+      "stage": {
+        "values": [
+          "Stage IIB"
+        ],
+        "display": "cT2N1M0 · Stage IIB"
+      },
+      "metastatic_sites": {
+        "values": [
+          "No distant site recorded"
+        ],
+        "display": "No distant metastatic site recorded"
+      },
+      "metastatic_burden": {
+        "values": [
+          "No metastatic disease recorded"
+        ],
+        "display": "No metastatic disease recorded"
+      },
+      "molecular_profile": {
+        "values": [
+          "KRAS G12D",
+          "TP53 mutated",
+          "SMAD4 retained",
+          "Mismatch-repair proficient",
+          "No BRCA1/2 or PALB2 variant"
+        ],
+        "display": "KRAS G12D, pathogenic TP53, SMAD4 retained, mismatch-repair proficient, no BRCA1/2 or PALB2 variant"
+      },
+      "performance_status": {
+        "values": [
+          "ECOG 1"
+        ],
+        "display": "ECOG 1; CFS 4, ASA III"
+      },
+      "age_band": {
+        "values": [
+          "70–79"
+        ],
+        "display": "70–79"
+      },
+      "previous_lines": {
+        "values": [
+          "1 previous line"
+        ],
+        "display": "One neoadjuvant systemic line"
+      },
+      "prior_procedures": {
+        "values": [],
+        "status": "MISSING",
+        "display": "None recorded",
+        "reason": "no completed oncological procedure is recorded; the pancreaticoduodenectomy is planned, not performed.",
+        "awaiting": "A recorded procedure history would allow procedure matching."
+      },
+      "comorbidities": {
+        "values": [
+          "Cardiac disease",
+          "Hypertension",
+          "Chronic kidney disease",
+          "Obstructive sleep apnoea",
+          "Type 2 diabetes"
+        ],
+        "display": "HFpEF with moderate aortic stenosis, hypertension, CKD stage 3a, OSA on CPAP, type 2 diabetes"
+      },
+      "decision_point": {
+        "values": [
+          "Perioperative fitness review"
+        ],
+        "display": "Perioperative fitness review"
+      }
+    }
+  }
 }

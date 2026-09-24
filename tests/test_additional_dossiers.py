@@ -77,7 +77,9 @@ def test_source_provenance_survives_a_windows_style_checkout(source: Path, tmp_p
 @pytest.mark.parametrize("name", PACKS)
 def test_full_new_pack_contract_and_source_hash(name: str) -> None:
     pack = _pack(name)
-    assert set(pack) == {"case", "role_contexts", "runtime", "external_evidence_ids"}
+    assert set(pack) == {
+        "case", "role_contexts", "runtime", "external_evidence_ids", "cohort_profile",
+    }
     case = pack["case"]
     assert {
         "id", "kind", "demo", "patient", "pseudonym", "age", "diagnosis", "stage",
