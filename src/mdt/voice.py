@@ -193,7 +193,7 @@ def build_voice_discussion(
             speaker="MDO chair",
             category="chair",
             text=(
-                "This is a voice-enabled demonstration MDO rehearsal. "
+                "This is a demonstration voice-enabled MDO rehearsal. "
                 f"The decision question is {_case_label(meeting)}"
             ),
             timestamp_offset_seconds=0,
