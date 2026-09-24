@@ -3,11 +3,15 @@
 
 :root {
   color-scheme: light;
-  --cp-bg: #f7f4ef;
-  --cp-bg-elevated: #fcfbf8;
+  --cp-bg: #eef2f5;
+  --cp-bg-elevated: #f8fafb;
   --cp-surface: #ffffff;
-  --cp-surface-soft: #f5f5f5;
-  --cp-border: #dedede;
+  --cp-surface-soft: #f3f6f8;
+  --cp-border: #d8dfe5;
+  --cp-chrome: #10304d;
+  --cp-chrome-fg: #eaf2f8;
+  --cp-chrome-muted: #a9c0d4;
+  --cp-banner: #e2ebf2;
   --cp-border-strong: #919191;
   --cp-text: #242424;
   --cp-text-muted: #5c5c5c;
@@ -29,11 +33,15 @@
 }
 html[data-theme="dark"] {
   color-scheme: dark;
-  --cp-bg: #3d3b3a;
-  --cp-bg-elevated: #343231;
-  --cp-surface: #292929;
-  --cp-surface-soft: #2e2e2e;
-  --cp-border: #474747;
+  --cp-bg: #2b3238;
+  --cp-bg-elevated: #242a30;
+  --cp-surface: #1f2429;
+  --cp-surface-soft: #262c32;
+  --cp-border: #3f4953;
+  --cp-chrome: #0b1a29;
+  --cp-chrome-fg: #dbe7f1;
+  --cp-chrome-muted: #8ea6ba;
+  --cp-banner: #1a2733;
   --cp-border-strong: #5f5f5f;
   --cp-text: #dedede;
   --cp-text-muted: #919191;
@@ -75,6 +83,10 @@ html[data-theme="dark"] {
   --color-cp-warning: var(--cp-warning);
   --color-cp-link: var(--cp-link);
   --color-cp-overlay: var(--cp-overlay);
+  --color-cp-chrome: var(--cp-chrome);
+  --color-cp-chrome-fg: var(--cp-chrome-fg);
+  --color-cp-chrome-muted: var(--cp-chrome-muted);
+  --color-cp-banner: var(--cp-banner);
 }
 @layer base {
   body { @apply m-0 bg-cp-bg font-sans text-sm leading-relaxed text-cp-text; }

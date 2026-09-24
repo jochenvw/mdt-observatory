@@ -6,6 +6,10 @@ real model tool calling, but latency and quota can exceed the scripted timing.
 The mode badge remains visible throughout.
 
 Choose light or dark with the theme control; the choice survives reload.
+The screens look like a module in a (fictional) hospital system: the header names
+the MDT room and which workstation each screen represents, and the patient banner
+keeps the patient, diagnosis, stage and spoken language (German, Italian or English)
+visible on every screen, so the audience always knows whose case is on the table.
 Switch between specialties to show genuinely different working surfaces: radiology
 comparison, oncology toxicity/options, surgical readiness, pathology findings,
 research applicability, protocol conditions and patient priorities. Activity

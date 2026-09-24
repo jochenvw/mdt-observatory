@@ -33,6 +33,14 @@ evidence applicability, pathway conditions and patient priorities. A persisted
 theme preference is applied before paint, with a system default and optional
 `scoutTheme` URL override.
 
+The application is framed as a module of a fictional hospital information
+system (`HospitalChrome.tsx`): a navy hospital header names the MDT room and the
+current workstation (for example "Radiologist workstation" or "MDT chair"), and an
+EHR-style patient banner repeats the case pseudonym, sex/age, case reference,
+diagnosis, stage, performance status and spoken language on every meeting screen.
+The banner reads only fields in the case record, never invents demographics or
+allergies, and labels the record fictional.
+
 Specialty screens put the role identity, attention cue, public assessment,
 newest-first activity and human controls in the center. A sticky desktop case
 rail keeps terse case facts and full-record access on the right. Full specialty

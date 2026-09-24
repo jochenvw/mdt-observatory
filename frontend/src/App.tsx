@@ -14,6 +14,7 @@ import { ROLE_LAYOUTS } from './roleLayouts';
 import { CaseSelection } from './CaseSelection';
 import { clinicalCaseKind } from './caseProfiles';
 import { documentStatus, Outcome, OutcomeBanner } from './Outcome';
+import { HOSPITAL, PatientBanner, Workstation } from './HospitalChrome';
 
 type Drafts = Partial<Record<Role, string>>;
 const MODE_LABEL: Record<Mode, string> = { rehearsal: 'Scripted demonstration', azure: 'Live AI review' };
@@ -82,20 +83,22 @@ export default function App() {
   return <div className={`app min-h-dvh bg-cp-bg text-cp-text ${workspace === 'wall' ? 'wall-mode' : ''}`}>
     <a className="skip-link sr-only fixed left-3 top-3 z-50 focus:not-sr-only focus:rounded-lg focus:border-2 focus:border-cp-accent focus:bg-cp-surface focus:p-3" href="#main">Skip to main content</a>
     <div className="demo-banner flex min-h-7 items-center justify-center gap-2 bg-cp-text px-3 py-1 text-center text-[9px] tracking-widest text-cp-bg"><ShieldCheck size={12} /><span>DEMONSTRATION SYSTEM · NOT FOR CLINICAL USE</span></div>
-    <header className="app-header flex min-h-20 flex-wrap items-center justify-between gap-3 border-b border-cp-border bg-cp-bg-elevated px-3 py-3 sm:px-6">
-      <button className="icon-button mobile-menu lg:hidden" aria-label="Toggle workspace navigation" aria-expanded={mobileNav} onClick={() => setMobileNav(value => !value)}><Menu size={21} /></button>
-      <button className="brand flex items-center gap-3 border-0! bg-[inherit]! p-0 text-left [&_strong]:block [&_strong]:text-sm [&_strong]:tracking-widest [&_strong_span]:text-cp-accent [&_small]:mt-1 [&_small]:block [&_small]:text-[7px] [&_small]:tracking-widest [&_small]:text-cp-text-soft max-sm:[&_strong]:text-[11px] max-sm:[&_strong]:tracking-wide max-sm:gap-2 max-sm:[&_.brand-mark]:size-8" aria-label="MDT Observatory home" onClick={() => selectWorkspace('central')}><span className="brand-mark flex size-10 shrink-0 items-center justify-center rounded-xl border border-cp-highlight bg-cp-accent-soft text-cp-accent"><Network size={25} /></span><span><strong>MDT <span>/</span> OBSERVATORY</strong><small>MULTIDISCIPLINARY TEAM REVIEW SYSTEM</small></span></button>
-      <div className="header-actions ml-auto flex items-center gap-3">
-        <span className={`connection hidden items-center gap-2 text-xs text-cp-text-muted md:inline-flex ${api.connection}`} role="status"><span className="status-dot inline-block size-1.5 shrink-0 rounded-full bg-cp-success" />{api.connection === 'online' ? 'Live connection' : label(api.connection)}</span>
-        <button className="text-button guide-button hidden xl:inline-flex max-xl:hidden!" onClick={() => setShowGuide(true)}>Presenter guide <ArrowUpRight size={14} /></button>
+    <header data-testid="hospital-bar" className="app-header flex min-h-14 flex-wrap items-center justify-between gap-x-5 gap-y-2 border-b border-cp-chrome bg-cp-chrome px-3 py-2 text-cp-chrome-fg sm:px-6">
+      <button className="icon-button mobile-menu text-cp-chrome-fg! lg:hidden" aria-label="Toggle workspace navigation" aria-expanded={mobileNav} onClick={() => setMobileNav(value => !value)}><Menu size={21} /></button>
+      <button className="brand flex items-center gap-3 border-0! bg-[inherit]! p-0 text-left text-cp-chrome-fg! [&_strong]:block [&_strong]:text-sm [&_strong]:tracking-widest [&_small]:mt-1 [&_small]:block [&_small]:text-[9px] [&_small]:tracking-wide [&_small]:text-cp-chrome-muted max-sm:[&_strong]:text-[11px] max-sm:[&_strong]:tracking-wide max-sm:gap-2 max-sm:[&_.brand-mark]:size-8" aria-label="MDT Observatory home" onClick={() => selectWorkspace('central')}><span aria-hidden="true" className="brand-mark flex size-9 shrink-0 items-center justify-center rounded-md bg-cp-chrome-fg text-2xl font-black leading-none text-cp-chrome">+</span><span><strong>MDT / OBSERVATORY</strong><small>{HOSPITAL.name} <span className="opacity-80">(fictional)</span> · {HOSPITAL.department}</small></span></button>
+      <div className="header-actions ml-auto flex flex-wrap items-center justify-end gap-x-5 gap-y-2">
+        <Workstation workspace={workspace} />
+        <span className={`connection hidden items-center gap-2 text-xs text-cp-chrome-muted md:inline-flex ${api.connection}`} role="status"><span className="status-dot inline-block size-1.5 shrink-0 rounded-full bg-cp-success" />{api.connection === 'online' ? 'Live connection' : label(api.connection)}</span>
+        <button className="text-button guide-button hidden text-cp-chrome-fg! xl:inline-flex max-xl:hidden!" onClick={() => setShowGuide(true)}>Presenter guide <ArrowUpRight size={14} /></button>
         <div className="flex items-center gap-2">
-          <button data-testid="theme-toggle" className="button secondary max-sm:size-9 max-sm:p-0" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`} aria-pressed={theme === 'dark'} onClick={toggleTheme}>{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}<span className="hidden sm:inline">{theme === 'dark' ? 'Dark theme' : 'Light theme'}</span></button>
-          <button data-testid="theme-system" className="text-button hidden sm:inline-flex max-sm:hidden!" onClick={useSystemTheme}>Use system</button>
+          <button data-testid="theme-toggle" className="button secondary min-h-9! max-sm:size-9 max-sm:p-0" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`} aria-pressed={theme === 'dark'} onClick={toggleTheme}>{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}<span className="hidden sm:inline">{theme === 'dark' ? 'Dark theme' : 'Light theme'}</span></button>
+          <button data-testid="theme-system" className="text-button hidden text-cp-chrome-fg! sm:inline-flex max-sm:hidden!" onClick={useSystemTheme}>Use system</button>
         </div>
       </div>
     </header>
+    {meeting && workspace !== 'cases' && <PatientBanner meeting={meeting} showCase={() => setShowCase(true)} />}
     <div className="shell grid min-h-[calc(100dvh-108px)] lg:grid-cols-[220px_minmax(0,1fr)]">
-      <aside className={`sidebar hidden flex-col gap-5 border-r border-cp-border bg-cp-bg-elevated p-4 lg:sticky lg:top-0 lg:flex lg:max-h-dvh lg:self-start lg:overflow-y-auto ${mobileNav ? 'is-open flex! absolute left-0 top-27 z-30 w-72 max-w-[92vw] border-b border-cp-border shadow-[var(--cp-shadow)] lg:sticky lg:w-auto lg:shadow-none' : ''}`} aria-label="Demo control">
+      <aside className={`sidebar hidden flex-col gap-5 border-r border-cp-border bg-cp-bg-elevated p-4 lg:sticky lg:top-0 lg:flex lg:max-h-dvh lg:self-start lg:overflow-y-auto ${mobileNav ? 'is-open flex! absolute left-0 top-36 z-30 w-72 max-w-[92vw] border-b border-cp-border shadow-[var(--cp-shadow)] lg:sticky lg:w-auto lg:shadow-none' : ''}`} aria-label="Demo control">
         <div className="sidebar-heading flex items-center justify-between gap-2 [&_.badge]:text-[8px]"><p className="eyebrow">DEMO CONTROL</p><Badge>LIVE MDT</Badge></div>
         <nav aria-label="Meeting and role workspaces">
           <NavItem testId="view-cases" selected={workspace === 'cases'} onClick={() => selectWorkspace('cases')} icon={<LayoutGrid size={18} />} title="Case selection" detail="Choose or resume a case" />
@@ -110,8 +113,8 @@ export default function App() {
       </aside>
       <main id="main" tabIndex={-1} data-specialty={isRole ? workspace : undefined} className={`mx-auto w-full min-w-0 max-w-[1900px] px-3 pb-6 sm:px-6 xl:px-8 ${roleLayout ? `${roleLayout.shell} ${roleLayout.canvas}` : ''}`}>
         {!themeSaved && <p data-testid="theme-storage-notice" role="status" className="mt-3 text-xs text-cp-text-muted">Theme changes apply to this visit; this browser cannot save a theme preference.</p>}
-        <div className="page-toolbar flex min-h-18 flex-wrap items-center justify-between gap-3 py-4">
-          <div className="breadcrumb flex items-center gap-2 text-xs text-cp-text-soft [&_strong]:font-medium [&_strong]:text-cp-text-muted"><span>Observatory</span><ChevronRight size={13} /><strong>{isRole ? roleMetaFor(workspace as Role, meeting).label : workspace === 'cases' ? 'Case selection' : workspace === 'central' ? 'Central MDT' : workspace === 'chair' ? 'Chair control' : workspace === 'outcome' ? 'Outcome & letters' : 'Workspace wall'}</strong></div>
+        <div className="page-toolbar flex min-h-14 flex-wrap items-center justify-between gap-3 py-2.5">
+          <div className="breadcrumb flex items-center gap-2 text-xs text-cp-text-soft [&_strong]:font-medium [&_strong]:text-cp-text-muted"><span>{HOSPITAL.department.split(' · ')[0]}</span><ChevronRight size={13} /><span>MDT Observatory</span><ChevronRight size={13} /><strong>{isRole ? roleMetaFor(workspace as Role, meeting).label : workspace === 'cases' ? 'Case selection' : workspace === 'central' ? 'Central MDT' : workspace === 'chair' ? 'Chair control' : workspace === 'outcome' ? 'Outcome & letters' : 'Workspace wall'}</strong></div>
           <div className="row flex items-center gap-2 wrap flex-wrap toolbar-controls ml-auto max-w-full min-w-0 justify-end [&_.button]:text-xs [&_select]:max-w-full [&_select]:text-xs">
             {meeting && <Badge tone="accent">Current: {MODE_LABEL[meeting.mode]}</Badge>}
             <label className="sr-only" htmlFor="mode">{meeting ? 'Mode for next case' : 'Execution mode'}</label>
