@@ -49,8 +49,7 @@ export default function App() {
   useEffect(() => {
     if (modeInitialized.current || api.loading || !config?.modes.length) return;
     modeInitialized.current = true;
-    const initialMode = meeting?.mode
-      ?? (config.modes.includes(config.default_mode) ? config.default_mode : config.modes[0]);
+    const initialMode = meeting?.mode ?? config.default_mode;
     setMode(config.modes.includes(initialMode) ? initialMode : config.modes[0]);
   }, [api.loading, config, meeting?.mode]);
   const meetingId = meeting?.id;

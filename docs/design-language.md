@@ -246,7 +246,7 @@ A small monospaced label that explains the role of the section.
 
 ```text
 SPECIALTY POSITIONS
-CURRENT ASSESSMENT
+CURRENT CONCLUSION
 CLAIM → SOURCE
 ```
 
@@ -309,6 +309,30 @@ The attention strip sits near the top of a workspace and combines:
 - one plain-language explanation.
 
 It states what changed or what the user needs to do. It does not repeat the whole page status.
+
+### Blocking handoff
+
+When progress depends on a human, place a warning-bordered alert directly below the attention strip:
+
+- eyebrow naming the block (`HUMAN FINDING REQUIRED · MDT BLOCKED`);
+- who the process is waiting for and what the next step hinges on;
+- a numbered "what unlocks this" sequence;
+- one primary action that focuses and scrolls to the input field, which is itself warning-bordered and opened.
+
+Show it only while the dependency is genuinely open. An insufficient reply keeps it visible and says why.
+
+### Reasoning path
+
+Present an agent's public account as a numbered sequence, each step with a label, a one-line explanation and bounded content:
+
+1. Trying to answer
+2. Considered
+3. This showed
+4. But this remains uncertain (warning border)
+5. So the current conclusion is
+6. Next
+
+Label it as a public summary, never as private model deliberation. Link to the full assessment drawer.
 
 ### Data fields
 
