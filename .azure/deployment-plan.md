@@ -1,6 +1,9 @@
 # MDT Observatory deployment plan
 
-Status: Validated - clinician-guidance and live-default release awaiting build/release.
+Status: Deployed - clinician-guidance and live-default release live. Image
+`acrmdtgy76frdpub6io.azurecr.io/mdt-observatory@sha256:7bf1467b96938092e3bc3f5bacbbffa91542352cb2aee7f9b75340ea74ccaf4b`,
+revision `mdt-observatory-vnet--r20260930055736-297bb9` at 100% traffic with one
+healthy replica.
 
 ## Section 7: Validation Proof - clinician-guidance and live-default release (2026-09-30)
 
@@ -23,10 +26,22 @@ storage, network, persistence or identity changes.
 | Live role review | Existing identity retains only AcrPull, container-scoped Storage Blob Data Contributor and Cognitive Services OpenAI User |
 
 Validation used the existing Container App presenter secret only in memory; it was
-not printed or persisted. The approved staged release remains mandatory: build a
-fresh immutable image, repeat exact-image validation and what-if, then use the
-drain-aware release stage and verify one active revision/replica, private Blob gates,
-health/readiness, live-mode configuration and the served UI.
+not printed or persisted. The approved staged release built a fresh immutable image,
+repeated exact-image validation and what-if, then used the drain-aware release stage
+to verify one active revision/replica, private Blob gates, health/readiness,
+live-mode configuration and the served UI.
+
+Released 2026-09-30 through `scripts/deploy.ps1` after the fresh ACR build and
+exact-image ARM validation/ResourceIdOnly what-if completed with no deletions. The
+drain-aware release verified TLS, `/healthz`, `/readyz`, the frontend, protected API,
+private Blob metadata, no file mounts, one active replica and the drained legacy app.
+Independent post-release checks confirmed both health endpoints return 200,
+`/api/config` requires authentication, offers Azure mode and reports
+`default_mode: azure`, and the served production bundle contains the new four-part
+case briefing, public assessment path and explicit human-blocker handoff.
+
+Endpoint:
+https://mdt-observatory-vnet.delightfulfield-8de6d3f0.westeurope.azurecontainerapps.io
 
 Previous status: Deployed - live research search release live. Image
 `acrmdtgy76frdpub6io.azurecr.io/mdt-observatory@sha256:c268c8ce599156c1d368dd3c6bf0ad3eee44177ee023c392a6d307f29d0c35d0`,
