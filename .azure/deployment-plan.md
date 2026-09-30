@@ -1,6 +1,35 @@
 # MDT Observatory deployment plan
 
-Status: Deployed - clinician-guidance cleanup release live. Image
+Status: Deployed - participant join release (Health Rewired Munich 2026) live. Image
+`acrmdtgy76frdpub6io.azurecr.io/mdt-observatory@sha256:bbdb962b8df6f8575ebc77c5ff3b7326d387113641d8fd5351ec02cfd46abc21`,
+revision `mdt-observatory-vnet--r20260930081957-823c7a` at 100% traffic with one
+healthy replica. Built from `9628a18`. Exact-image ARM validation succeeded and
+ResourceIdOnly what-if showed no deletions or creations. The drain-aware release
+verification passed with the updated anonymous-access gate. Post-release checks:
+anonymous `/api/config` reports `presenter: false` and `default_mode: azure`;
+anonymous `/api/meeting` returns 200 and `/api/cases` 401; the bundle carries the
+event banner. An anonymous browser lands on the join screen without the sidebar or
+QR code, and picking radiology keeps `?role=radiology` with the participant bar.
+
+## Section 7: Validation Proof - participant join release (2026-09-30)
+
+Scope: `9628a18`. Two access tiers. Participants follow the room and act for a
+specialty (steer, answer, concur, object, memory). Case selection, start, follow-up,
+retry, cohort, communications, export and room clear stay presenter-only. Adds the
+join screen, QR card, meeting-stage strip and event banners. Adds the zero-dependency
+`qrcode-generator` frontend package. No infra, RBAC, storage, network, persistence
+or identity changes. Operational note: open participant steering can call models on
+the shared quota, so share the URL only with the audience.
+
+| Command | Result |
+| --- | --- |
+| `uv run --frozen ruff check .` / `uv run --frozen mypy` | Pass / pass |
+| `MDT_BROWSER_TESTS=1 uv run --frozen pytest` | 345 passed |
+| `npx tsc -b` / `npm test -- --run` / `npm run build` | Pass / 173 passed / built |
+| `az deployment sub validate` (exact image) | Succeeded |
+| `az deployment sub what-if --result-format ResourceIdOnly` | Deploy/Ignore/Unsupported only; no deletions |
+
+Previous status: Deployed - clinician-guidance cleanup release live. Image
 `acrmdtgy76frdpub6io.azurecr.io/mdt-observatory@sha256:39edac89b16775929792ae6d162e81ba3e7b1209e65a7ae98df0139fdece2774`,
 revision `mdt-observatory-vnet--r20260930065206-50a76e` at 100% traffic with one
 healthy replica. Built from `29f36dc` (redundant default-mode fallback removed;
