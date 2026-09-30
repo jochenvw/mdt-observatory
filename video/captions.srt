@@ -1,0 +1,128 @@
+1
+00:00:00,700 --> 00:00:06,950
+This is a multidisciplinary tumour board. Different
+specialists, bringing their expertise to one patient's care.
+
+2
+00:00:07,800 --> 00:00:14,300
+Before they can agree a plan, they must bring the scans,
+pathology, treatment history and evidence together.
+
+3
+00:00:15,700 --> 00:00:21,750
+MDT Observatory explores a different way to prepare. Each
+specialist has a role-specific agent.
+
+4
+00:00:22,800 --> 00:00:29,250
+The oncology agent reviews treatment. Radiology examines
+imaging. Pathology brings the tissue findings.
+
+5
+00:00:30,000 --> 00:00:37,500
+The agent represents a professional perspective. The
+specialist steers the work and remains responsible for
+clinical judgement.
+
+6
+00:00:40,700 --> 00:00:47,700
+A model interprets information and communicates. Tools
+retrieve the records and evidence the role is allowed to use.
+
+7
+00:00:48,100 --> 00:00:54,500
+Its role and case context focus the work. These are curated
+sources, with access limits visible.
+
+8
+00:00:55,050 --> 00:00:59,700
+This film shows the application's scripted rehearsal, not live
+model inference.
+
+9
+00:01:00,600 --> 00:01:03,850
+Everyone sees the same case. Their working views are
+different.
+
+10
+00:01:05,000 --> 00:01:08,300
+Imaging and tissue findings. Treatment and surgery.
+
+11
+00:01:09,300 --> 00:01:13,450
+The chair sees the shared questions and where the specialties
+disagree.
+
+12
+00:01:15,700 --> 00:01:21,600
+The agents publish positions into a shared meeting. The chair
+coordinates the unresolved questions.
+
+13
+00:01:22,400 --> 00:01:29,250
+In this synthetic case, treatment has reduced the liver
+disease. But response alone does not settle the next step.
+
+14
+00:01:30,400 --> 00:01:36,500
+Can every original liver site be addressed? What does the
+small, indeterminate lung nodule mean?
+
+15
+00:01:37,500 --> 00:01:43,600
+And how well does the evidence support this particular
+sequence of treatment? Those questions need attention.
+
+16
+00:01:45,600 --> 00:01:51,800
+When evidence is incomplete, the uncertainty stays visible.
+The system asks for specialist input.
+
+17
+00:01:52,100 --> 00:01:58,700
+Here, the radiologist asks for review of all nine liver sites,
+vessel margins and the lung nodule.
+
+18
+00:01:59,700 --> 00:02:04,100
+That guidance returns to the discussion. Remaining conditions
+stay attached.
+
+19
+00:02:05,600 --> 00:02:11,800
+A conditional plan now comes back for review. Required human
+concurrence is tied to this exact version.
+
+20
+00:02:12,700 --> 00:02:19,700
+The aim is less time assembling facts, and more time on
+judgement. Agreement does not remove uncertainty.
+
+21
+00:02:20,600 --> 00:02:25,300
+The recorded outcome carries the actions, conditions and
+review history forward.
+
+22
+00:02:26,000 --> 00:02:31,850
+With a model connected, it can draft a colleague letter and a
+patient summary for named clinician approval.
+
+23
+00:02:32,760 --> 00:02:39,410
+Drafting is unavailable in this local run. These illustrated
+excerpts show the intended communication.
+
+24
+00:02:39,650 --> 00:02:44,700
+Plain language. The patient's language. Always reviewed before
+sharing.
+
+25
+00:02:45,700 --> 00:02:49,350
+Let the agents prepare, search, compare and coordinate.
+
+26
+00:02:50,400 --> 00:02:57,150
+Give specialists more time for the difficult questions, the
+patient's priorities, and the judgement that remains theirs.

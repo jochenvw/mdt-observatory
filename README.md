@@ -8,6 +8,11 @@ The chair coordinates the process; it does not independently prescribe treatment
 **DEMONSTRATION SYSTEM. NOT FOR CLINICAL USE. No real patient data.**
 Confidence is an illustrative model assessment, not a calibrated medical probability.
 
+[![Watch the three-minute MDT Observatory explainer film](docs/media/explainer-poster.jpg)](https://github.com/jochenvw/mdt-observatory/releases/download/explainer-film-v1/mdt-observatory-explainer.mp4)
+
+▶ **[Watch the three-minute explainer film](https://github.com/jochenvw/mdt-observatory/releases/download/explainer-film-v1/mdt-observatory-explainer.mp4)**
+(MP4, 45 MB, English narration with captions; [release page](https://github.com/jochenvw/mdt-observatory/releases/tag/explainer-film-v1)).
+
 Hosted demo (Health Rewired Munich 2026):
 <https://mdt-observatory-vnet.delightfulfield-8de6d3f0.westeurope.azurecontainerapps.io>.
 Participants open the URL, or scan the QR code on the presenter's Join screen, and
@@ -115,6 +120,16 @@ and exportable; start a new case to use the new dossier.
 
 See [demo walkthrough](docs/demo.md), [architecture](docs/architecture.md) and
 [operations](docs/operations.md).
+
+### Explainer film
+
+[Watch the film](https://github.com/jochenvw/mdt-observatory/releases/download/explainer-film-v1/mdt-observatory-explainer.mp4)
+(release asset; rendered output is not committed). [`video`](video/README.md) contains
+the source of this reproducible three-minute, Microsoft-inspired
+Remotion film made from the actual local interface and synthetic rehearsal case.
+It includes browser capture, English narration, captions and rendering commands.
+The film preserves human-review gates and explicitly labels illustrative letter
+excerpts where model-backed drafting is unavailable.
 
 ### Running the room across several screens
 

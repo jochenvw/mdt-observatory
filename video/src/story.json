@@ -1,0 +1,116 @@
+{
+  "title": "MDT Observatory",
+  "width": 1920,
+  "height": 1080,
+  "fps": 25,
+  "duration": 180,
+  "scenes": [
+    {
+      "id": "room",
+      "from": 0,
+      "duration": 15,
+      "title": "Different expertise. One patient.",
+      "visual": "An illustrated meeting room surrounds the real central wall. Move towards the synthetic case; source records orbit the clinicians.",
+      "cues": [
+        {"at": 0.7, "text": "This is a multidisciplinary tumour board. Different specialists, bringing their expertise to one patient's care."},
+        {"at": 7.8, "text": "Before they can agree a plan, they must bring the scans, pathology, treatment history and evidence together."}
+      ]
+    },
+    {
+      "id": "partners",
+      "from": 15,
+      "duration": 25,
+      "title": "A specialist. An agent. A shared task.",
+      "visual": "Move from the oncologist to the actual oncology desk. Reveal separately labelled human and agent pairs; open the real radiology and pathology desks.",
+      "cues": [
+        {"at": 0.7, "text": "MDT Observatory explores a different way to prepare. Each specialist has a role-specific agent."},
+        {"at": 7.8, "text": "The oncology agent reviews treatment. Radiology examines imaging. Pathology brings the tissue findings."},
+        {"at": 15.0, "text": "The agent represents a professional perspective. The specialist steers the work and remains responsible for clinical judgement."}
+      ]
+    },
+    {
+      "id": "inside",
+      "from": 40,
+      "duration": 20,
+      "title": "What makes an agent useful?",
+      "visual": "Expand an agent into model, permitted tools and role/context layers. Follow evidence from the actual application drawer back into the role workspace.",
+      "cues": [
+        {"at": 0.7, "text": "A model interprets information and communicates. Tools retrieve the records and evidence the role is allowed to use."},
+        {"at": 8.1, "text": "Its role and case context focus the work. These are curated sources, with access limits visible."},
+        {"at": 15.2, "text": "This film shows the application's scripted rehearsal, not live model inference."}
+      ]
+    },
+    {
+      "id": "perspectives",
+      "from": 60,
+      "duration": 15,
+      "title": "One case. Different working views.",
+      "visual": "Editorial match cuts between real imaging, pathology, oncology, surgical and chair screens; keep the patient context visible.",
+      "cues": [
+        {"at": 0.6, "text": "Everyone sees the same case. Their working views are different."},
+        {"at": 5.0, "text": "Imaging and tissue findings. Treatment and surgery."},
+        {"at": 9.3, "text": "The chair sees the shared questions and where the specialties disagree."}
+      ]
+    },
+    {
+      "id": "conversation",
+      "from": 75,
+      "duration": 30,
+      "title": "Find the question that matters.",
+      "visual": "Concise editorial paraphrases of public positions flow across the real workspace wall. An unresolved question forms at their intersection.",
+      "cues": [
+        {"at": 0.7, "text": "The agents publish positions into a shared meeting. The chair coordinates the unresolved questions."},
+        {"at": 7.4, "text": "In this synthetic case, treatment has reduced the liver disease. But response alone does not settle the next step."},
+        {"at": 15.4, "text": "Can every original liver site be addressed? What does the small, indeterminate lung nodule mean?"},
+        {"at": 22.5, "text": "And how well does the evidence support this particular sequence of treatment? Those questions need attention."}
+      ]
+    },
+    {
+      "id": "judgement",
+      "from": 105,
+      "duration": 20,
+      "title": "Bring in human judgement.",
+      "visual": "Highlight real unresolved friction; connect the radiology agent to its clinician, show typed guidance, and return to the updated position.",
+      "cues": [
+        {"at": 0.6, "text": "When evidence is incomplete, the uncertainty stays visible. The system asks for specialist input."},
+        {"at": 7.1, "text": "Here, the radiologist asks for review of all nine liver sites, vessel margins and the lung nodule."},
+        {"at": 14.7, "text": "That guidance returns to the discussion. Remaining conditions stay attached."}
+      ]
+    },
+    {
+      "id": "consensus",
+      "from": 125,
+      "duration": 15,
+      "title": "Review the plan. Preserve the conditions.",
+      "visual": "Show the real conditional proposal, changing version-bound concurrence states, and captured decision. Distinguish clinician review from automatic demo-policy support.",
+      "cues": [
+        {"at": 0.6, "text": "A conditional plan now comes back for review. Required human concurrence is tied to this exact version."},
+        {"at": 8.0, "text": "The aim is less time assembling facts, and more time on judgement. Agreement does not remove uncertainty."}
+      ]
+    },
+    {
+      "id": "action",
+      "from": 140,
+      "duration": 25,
+      "title": "Carry the decision into care.",
+      "visual": "Begin with the real outcome, actions and visible document-drafting failure. Branch into labelled editorial letter illustrations; transform a short patient excerpt from English to German.",
+      "cues": [
+        {"at": 0.6, "text": "The recorded outcome carries the actions, conditions and review history forward."},
+        {"at": 6.0, "text": "With a model connected, it can draft a colleague letter and a patient summary for named clinician approval."},
+        {"at": 13.7, "text": "Drafting is unavailable in this local run. These illustrated excerpts show the intended communication."},
+        {"at": 20.0, "text": "Plain language. The patient's language. Always reviewed before sharing."}
+      ]
+    },
+    {
+      "id": "close",
+      "from": 165,
+      "duration": 15,
+      "title": "More time for clinical judgement.",
+      "visual": "Return to the humans in the meeting room, agents quietly beside them, and the captured decision on the wall. Hold a restrained blue-and-white end title.",
+      "cues": [
+        {"at": 0.7, "text": "Let the agents prepare, search, compare and coordinate."},
+        {"at": 5.4, "text": "Give specialists more time for the difficult questions, the patient's priorities, and the judgement that remains theirs."}
+      ]
+    }
+  ]
+}

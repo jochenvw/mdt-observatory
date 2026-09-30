@@ -19,4 +19,7 @@ artifacts/
 *.db-*
 test-results/
 playwright-report/
-
+video/captures/
+video/audio/
+video/out/
+video/assets/generated/
