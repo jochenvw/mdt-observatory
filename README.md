@@ -8,10 +8,13 @@ The chair coordinates the process; it does not independently prescribe treatment
 **DEMONSTRATION SYSTEM. NOT FOR CLINICAL USE. No real patient data.**
 Confidence is an illustrative model assessment, not a calibrated medical probability.
 
-Hosted demo:
+Hosted demo (Health Rewired Munich 2026):
 <https://mdt-observatory-vnet.delightfulfield-8de6d3f0.westeurope.azurecontainerapps.io>.
-Sign in with the presenter token from the Git-ignored, current-user-restricted
-`.azure\presenter-token.txt`; never publish that file. Rehearsal takes about
+Participants open the URL, or scan the QR code on the presenter's Join screen, and
+pick a role; no key is needed. The demo team unlocks case selection and the chair
+controls with the presenter token from the Git-ignored, current-user-restricted
+`.azure\presenter-token.txt`; never publish that file. See the
+[room setup](docs/demo.md#room-setup-health-rewired-munich-2026). Rehearsal takes about
 60-90 seconds; the real Azure-model walkthrough takes about eight minutes on
 the configured shared quota.
 
@@ -118,10 +121,11 @@ See [demo walkthrough](docs/demo.md), [architecture](docs/architecture.md) and
 The meeting room is a single shared room, so the demonstration can be run with one
 orchestrator screen and a screen per participant, each on its own machine.
 
-1. Every participant opens the application and selects their specialty. Each screen
+1. Every participant opens the shared URL (no key), lands on the join screen and
+   picks their specialty. Each screen
    shows a specialty-branded standby view: it is connected to the room, states that
    no patient record is loaded, and lists what that specialty will be responsible for.
-2. The orchestrator selects a case and starts the meeting. Every open screen leaves
+2. The orchestrator (presenter key) selects a case and starts the meeting. Every open screen leaves
    standby and fills with that case, and each specialty then follows its own
    reasoning as it is produced.
 3. When the meeting has finished, the orchestrator uses **Clear the room**, available
@@ -172,7 +176,9 @@ room; do not run it during someone else's presentation.
 - One shared presenter room, one process and one container replica. Not a
   multi-tenant, horizontally scaled or production clinical architecture.
 - Only the curated demonstration case can be activated; there is no patient upload.
-- Cloud access uses a presenter token and a signed, HTTP-only, same-site cookie.
+- Cloud access has two tiers. Anyone with the URL can follow the room and act for
+  a specialty (steer, answer, concur, object). Running the meeting needs a presenter
+  token and a signed, HTTP-only, same-site cookie.
   This is demo access control, not clinical identity or legally valid signatures.
   Ten failed sign-ins per client per minute are throttled; a correct token is
   never throttled, so others' failures cannot lock the presenter out. In Azure,

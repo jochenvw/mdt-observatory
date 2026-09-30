@@ -116,14 +116,19 @@ try {
     try {
         if ([int]$response.StatusCode -ne 200) { throw 'Public configuration endpoint failed.' }
         $publicConfig = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
-        if (-not $publicConfig.auth_required -or 'azure' -notin $publicConfig.modes) {
-            throw 'Cloud configuration must require presenter authentication and offer Azure mode.'
+        if (-not $publicConfig.auth_required -or 'azure' -notin $publicConfig.modes -or $publicConfig.presenter) {
+            throw 'Cloud configuration must require presenter authentication, offer Azure mode and not treat anonymous clients as presenters.'
         }
     } finally { $response.Dispose() }
-    foreach ($path in @('/api/meeting', '/api/meetings/verification-missing', '/api/meetings/verification-missing/stream')) {
+    # Participants follow the room anonymously; case selection, orchestration and exports stay presenter-only.
+    $response = $client.GetAsync("$baseUrl/api/meeting").GetAwaiter().GetResult()
+    try {
+        if ([int]$response.StatusCode -ne 200) { throw 'Anonymous participants could not read the shared meeting room.' }
+    } finally { $response.Dispose() }
+    foreach ($path in @('/api/cases', '/api/meetings/verification-missing/export')) {
         $response = $client.GetAsync("$baseUrl$path").GetAwaiter().GetResult()
         try {
-            if ([int]$response.StatusCode -ne 401) { throw "Anonymous patient-data access was not rejected at $path." }
+            if ([int]$response.StatusCode -ne 401) { throw "Anonymous presenter-only access was not rejected at $path." }
         } finally { $response.Dispose() }
     }
     if (-not [string]::IsNullOrWhiteSpace($env:MDT_PRESENTER_TOKEN)) {

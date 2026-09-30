@@ -14,6 +14,7 @@ export const HOSPITAL = {
 };
 
 const WORKSTATION: Record<Exclude<Workspace, Role>, string> = {
+  join: 'Participant check-in',
   cases: 'Tumour board coordinator',
   central: 'MDT room display',
   chair: 'MDT chair',

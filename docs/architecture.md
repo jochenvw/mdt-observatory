@@ -62,7 +62,20 @@ versions, human concurrence and agent support. A 900 ms entry animation eases
 public updates only; it never delays state, errors or review controls, and is
 disabled for reduced motion.
 
-The entry screen lists the authenticated `/api/cases` catalog and offers a
+Access has two tiers. Participants open the shared URL without a key, pick a
+role on the join screen and follow the room through `GET /api/meeting`,
+`/api/room/stream` and meeting reads and streams. From their specialty they can
+steer or answer their agent, concur, object and act on memory nudges.
+Everything that runs the meeting stays presenter-only behind the signed
+HttpOnly cookie: the case catalog, starting a case, targeted follow-up, retry,
+cohort edits, communications, export and clearing the room. `/api/config`
+reports `presenter` so the browser can hide those controls; the server enforces
+them regardless. Open participant commands still pass the chair's validation
+and busy (409) gates. There is no per-client rate limit, so in Azure mode anyone
+holding the URL can trigger model calls on the shared quota: share the URL only
+with the room.
+
+The presenter entry screen lists the `/api/cases` catalog and offers a
 separate resume action. The browser posts the selected `case_id` when starting.
 Unknown IDs are rejected before replacing or persisting a meeting; active rounds
 still prohibit replacement. Omitting `case_id` remains backward-compatible with

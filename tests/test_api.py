@@ -77,14 +77,46 @@ def test_auth_health_config_and_protected_state(tmp_path: Path) -> None:
         assert client.get("/api/config").json()["disclaimer"] == (
             "DEMONSTRATION SYSTEM. NOT FOR CLINICAL USE."
         )
-        assert client.get("/api/meeting").status_code == 401
+        assert client.get("/api/config").json()["presenter"] is False
+        # Participants follow the room from the shared URL without the presenter secret.
+        assert client.get("/api/meeting").json() is None
+        assert client.get("/api/cases").status_code == 401
+        assert client.post("/api/meetings", json={"mode": "rehearsal"}).status_code == 401
         assert client.post("/api/auth", json={"token": "incorrect"}).status_code == 401
         response = client.post("/api/auth", json={"token": "x" * 32})
         assert response.status_code == 200
         assert "httponly" in response.headers["set-cookie"].lower()
         assert "samesite=strict" in response.headers["set-cookie"].lower()
         assert client.cookies[COOKIE] != "x" * 32
+        assert client.get("/api/config").json()["presenter"] is True
         assert client.get("/api/meeting").json() is None
+
+
+def test_participants_act_for_a_specialty_but_cannot_run_the_meeting(tmp_path: Path) -> None:
+    settings = Settings(db_path=str(tmp_path / "join.db"), presenter_token="p" * 32, step_delay=0)
+    with TestClient(create_app(settings)) as client:
+        assert client.post("/api/auth", json={"token": "p" * 32}).status_code == 200
+        meeting_id = client.post(
+            "/api/meetings", json={"mode": "rehearsal", "case_id": CASE["id"]}
+        ).json()["id"]
+        drain(client)
+        client.cookies.clear()
+        assert client.get("/api/config").json()["presenter"] is False
+        assert client.get(f"/api/meetings/{meeting_id}").status_code == 200
+        base = f"/api/meetings/{meeting_id}"
+        for path in ("followup", "retry", "cohort-reference"):
+            assert client.post(f"{base}/{path}", json={}).status_code == 401
+        assert client.get(f"{base}/export").status_code == 401
+        assert client.post("/api/room/clear", json={}).status_code == 401
+        assert client.get(f"/api/cases/{CASE['id']}/cohort").status_code == 401
+        steered = client.post(
+            f"{base}/steer",
+            json={"role": "radiology", "guidance": "I reviewed the baseline MRI: 11 sites."},
+        )
+        assert steered.status_code == 200
+        assert any(
+            "11 sites" in item for item in steered.json()["roles"]["radiology"]["guidance"]
+        )
 
 
 def test_cookie_expiry_and_tamper() -> None:
@@ -319,7 +351,6 @@ def test_room_clear_is_protected_and_refused_during_an_active_round(tmp_path: Pa
     settings = Settings(db_path=str(tmp_path / "guard.db"), presenter_token="e" * 32, step_delay=0)
     with TestClient(create_app(settings)) as client:
         assert client.post("/api/room/clear", json={}).status_code == 401
-        assert client.get("/api/room/stream").status_code == 401
         assert client.post("/api/auth", json={"token": "e" * 32}).status_code == 200
         client.post("/api/meetings", json={"mode": "rehearsal", "case_id": CASE["id"]})
         drain(client)

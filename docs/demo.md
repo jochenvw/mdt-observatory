@@ -1,5 +1,35 @@
 # Presenter walkthrough
 
+## Room setup: Health Rewired Munich 2026
+
+The demonstration simulates a real MDT meeting. Participants can be in the room
+or remote; either works.
+
+1. **Share the URL.** Open the site, unlock with the presenter key
+   (**Open the chair's screen**) and put the **Join screen** on the big
+   display. It shows the URL and a QR code. Participants need no key.
+2. **Everyone picks a role.** Each clinician picks a specialty on their laptop or
+   phone and sees "Waiting for the chair to open a case", plus a short explainer:
+   each specialty has an AI assistant that reads the record, reasons in the open,
+   disagrees and waits for a human.
+3. **The chair (voorzitter) decides the case.** The demo team opens **Case
+   selection**, picks the case the chair named and starts it. Every participant
+   screen fills with the case briefing.
+4. **Watch the reasoning.** The **meeting stage** strip above each workspace tells
+   the audience which of five stages the meeting is in, which round is running
+   and what that means. Each assistant's reasoning path shows what it considered,
+   what it found and why it concluded. The radiology screen turns amber when the
+   MDT is waiting for the radiologist.
+5. **Consensus.** Participants concur or object for their own specialty. Only a
+   human sign-off counts; the assistants never decide.
+6. **Next case.** The demo team clears the room or starts the next case, and every
+   screen repopulates.
+
+Case selection, follow-up rounds, retry, cohort edits, letters, export and
+clearing the room are presenter-only. Share the URL only with the audience: in
+live AI mode every participant instruction uses the shared model quota.
+
+## Running the walkthrough
 Use **Scripted demonstration** (`rehearsal`) for a predictable 60-90 second presentation.
 **Live AI review** (`azure`) demonstrates
 real model tool calling, but latency and quota can exceed the scripted timing.

@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
-def server(tmp_path: Path) -> Iterator[str]:
+def server(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[str]:
     if external := os.getenv("MDT_BROWSER_URL"):
         assert external.startswith("https://"), "Remote browser verification requires HTTPS."
         yield external.rstrip("/")
@@ -36,7 +36,8 @@ def server(tmp_path: Path) -> Iterator[str]:
         **os.environ,
         "MDT_DB_PATH": str(tmp_path / "browser.db"),
         "MDT_STEP_DELAY": "0.03",
-        "MDT_PRESENTER_TOKEN": "",
+        # Parametrize indirectly with a key to run the server with presenter access enforced.
+        "MDT_PRESENTER_TOKEN": getattr(request, "param", ""),
     }
     env.pop("CONTAINER_APP_NAME", None)
     env.pop("APPLICATIONINSIGHTS_CONNECTION_STRING", None)
@@ -95,8 +96,11 @@ def wait_settled(page: Page) -> dict[str, Any]:
 
 
 def navigate(page: Page, label: str) -> None:
+    toggle = page.get_by_role("button", name="Toggle workspace navigation", exact=True)
+    # Presenter navigation renders once /api/config confirms presenter access.
+    expect(page.get_by_role("navigation").or_(toggle).first).to_be_visible()
     if not page.get_by_role("navigation").is_visible():
-        page.get_by_role("button", name="Toggle workspace navigation", exact=True).click()
+        toggle.click()
     page.get_by_role("navigation").get_by_role("button", name=re.compile(label)).click()
 
 
@@ -164,7 +168,7 @@ def test_browser_added_case_selection_and_specialty_records(
         else:
             expect(dialog).to_contain_text("0.18")
         page.keyboard.press("Escape")
-        page.reload()
+        page.goto(server)
         page.get_by_test_id("resume-meeting").click()
         assert state(page)["id"] == meeting["id"]
         page.set_viewport_size({"width": 390, "height": 844})
@@ -416,10 +420,14 @@ def test_specialty_layouts_themes_and_clinical_presentation(server: str) -> None
                 if blocker.count():
                     blocker_box = blocker.bounding_box()
                     assert blocker_box and desk_box and blocker_box["y"] < desk_box["y"]
-                    assert desk_box["y"] < 1200, f"{role}/{theme}: blocking handoff is too tall"
+                    assert desk_box["y"] - blocker_box["y"] < 600, (
+                        f"{role}/{theme}: blocking handoff is too tall "
+                        f"({desk_box['y'] - blocker_box['y']:.0f}px)"
+                    )
                 else:
-                    assert desk_box and desk_box["y"] < 760, (
-                        f"{role}/{theme}: activity starts too low"
+                    # Budget includes the meeting-stage strip that orients a lay audience.
+                    assert desk_box and desk_box["y"] < 880, (
+                        f"{role}/{theme}: activity starts too low ({desk_box and desk_box['y']})"
                     )
                 assert summary_box and identity_box and summary_box["y"] < identity_box["y"]
                 assert page.get_by_test_id("case-rail").count() == 0
@@ -628,7 +636,7 @@ def test_participant_screens_follow_the_orchestrator_across_cases(server: str) -
             navigate(screen, label)
             standby = screen.get_by_test_id(f"standby-{key}")
             expect(standby).to_be_visible()
-            expect(standby).to_contain_text("Waiting for the orchestrator to open a case")
+            expect(standby).to_contain_text("Waiting for the chair to open a case")
             assert screen.get_by_test_id(f"workspace-{key}").count() == 0
             # A waiting screen shows no patient record at all.
             assert "CRC-2026-001" not in (screen.locator("main").text_content() or "")
@@ -711,6 +719,85 @@ def test_participant_screens_follow_the_orchestrator_across_cases(server: str) -
             assert second["case"]["pseudonym"] not in (screen.locator("main").text_content() or "")
         expect(orchestrator.get_by_test_id("clear-room")).to_have_count(0)
         assert orchestrator.request.get(f"/api/meetings/{second['id']}/export").ok
+
+        assert not errors, errors
+        browser.close()
+PRESENTER_KEY = "browser-presenter-key-" + "k" * 16
+
+
+@pytest.mark.parametrize("server", [PRESENTER_KEY], indirect=True)
+def test_participants_join_from_the_shared_url_and_the_presenter_runs_the_room(
+    server: str,
+) -> None:
+    """The Health Rewired demo: people open the shared URL, pick a role and wait; only
+    the demo team, holding the presenter key, chooses and starts the case."""
+    key = os.getenv("MDT_PRESENTER_TOKEN", "") if os.getenv("MDT_BROWSER_URL") else PRESENTER_KEY
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        errors: list[str] = []
+
+        def open_screen() -> Page:
+            context = browser.new_context(
+                base_url=server, viewport={"width": 1440, "height": 1000}, reduced_motion="reduce"
+            )
+            screen = context.new_page()
+            screen.on("pageerror", lambda error: errors.append(str(error)))
+            screen.goto(server)
+            return screen
+
+        # 1. A participant opens the shared URL: join screen, event banner, no chair controls.
+        participant = open_screen()
+        expect(participant.get_by_test_id("join-screen")).to_be_visible()
+        expect(participant.get_by_test_id("demo-banner")).to_contain_text(
+            "HEALTH REWIRED MUNICH 2026"
+        )
+        expect(participant.get_by_test_id("demo-explainer")).to_be_visible()
+        expect(participant.get_by_test_id("presenter-entry")).to_be_visible()
+        assert participant.get_by_role("complementary", name="Demo control").count() == 0
+        assert participant.get_by_test_id("mode-select").count() == 0
+        assert participant.get_by_test_id("join-qr").count() == 0
+        participant.get_by_test_id("join-radiology").click()
+        expect(participant.get_by_test_id("standby-radiology")).to_contain_text(
+            "Waiting for the chair to open a case"
+        )
+        expect(participant.get_by_test_id("participant-bar")).to_contain_text("radiologist")
+        assert "role=radiology" in participant.url
+
+        # 2. The demo team unlocks the chair's screen with the key and shows the QR code.
+        presenter = open_screen()
+        presenter.get_by_test_id("presenter-entry").click()
+        presenter.get_by_label("Presenter secret", exact=True).fill(key)
+        presenter.get_by_role("button", name="Unlock presenter controls").click()
+        expect(presenter.get_by_test_id("mode-select")).to_be_visible()
+        navigate(presenter, "Join screen")
+        expect(presenter.get_by_test_id("join-qr")).to_be_visible()
+        expect(presenter.get_by_test_id("join-url")).to_contain_text(server)
+
+        # 3. The chair opens a case; the participant's screen fills without a reload.
+        navigate(presenter, "Case selection")
+        presenter.get_by_test_id("mode-select").select_option("rehearsal")
+        click_command(
+            presenter,
+            presenter.get_by_role("button", name=re.compile("^Start (new )?case$")),
+            "/api/meetings",
+        )
+        wait_settled(presenter)
+        expect(participant.get_by_test_id("workspace-radiology")).to_be_visible(timeout=30_000)
+        expect(participant.get_by_test_id("meeting-stage")).to_be_visible()
+        expect(participant.get_by_test_id("role-case-summary")).to_be_visible()
+        assert participant.get_by_role("button", name="Chair controls").count() == 0
+
+        # 4. The participant answers for their own specialty without any key.
+        participant.get_by_test_id("guidance-input").fill("Baseline MRI reviewed: 11 sites.")
+        click_command(participant, participant.get_by_test_id("send-guidance"), "/steer")
+        assert participant.request.get("/api/cases").status == 401
+
+        # 5. A role link survives a reload, and the participant can change role.
+        participant.reload()
+        expect(participant.get_by_test_id("workspace-radiology")).to_be_visible()
+        participant.get_by_test_id("change-role").click()
+        expect(participant.get_by_test_id("join-screen")).to_contain_text("A case is in progress")
+        assert "role=" not in participant.url
 
         assert not errors, errors
         browser.close()

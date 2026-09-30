@@ -1,7 +1,7 @@
 export const ROLES = ['radiology', 'oncology', 'surgery', 'pathology', 'research', 'protocol', 'patient'] as const;
 export type Role = typeof ROLES[number];
 export type Mode = 'rehearsal' | 'azure';
-export type Workspace = 'cases' | 'central' | 'chair' | 'wall' | 'outcome' | Role;
+export type Workspace = 'join' | 'cases' | 'central' | 'chair' | 'wall' | 'outcome' | Role;
 export interface CaseSummary { id: string; title: string; patient_label: string; stage: string; question: string; preferred_language?: string }
 export const PHASES = ['IDLE', 'CASE_LOADING', 'INITIAL_ANALYSIS', 'POSITION_COLLECTION', 'FRICTION_ANALYSIS', 'TARGETED_DISCUSSION', 'POSITION_UPDATE', 'PLAN_PROPOSAL', 'CONCURRENCE', 'DECISION_CAPTURED'] as const;
 export type Phase = typeof PHASES[number] | 'ERROR';
@@ -183,4 +183,4 @@ export interface Meeting {
   closed_at: string | null;
   communications?: Partial<Record<Audience, Communication>>;
 }
-export interface Config { modes: Mode[]; default_mode: Mode; auth_required: boolean; version: string }
+export interface Config { modes: Mode[]; default_mode: Mode; auth_required: boolean; presenter: boolean; version: string }

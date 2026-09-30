@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, ArrowUpRight, Check, CheckCheck, ChevronRight, CircleDot, Download, Eraser, ExternalLink, Flag, GitBranch, LayoutDashboard, LayoutGrid, LoaderCircle, LockKeyhole, Maximize2, Menu, Moon, Network, Play, RefreshCw, ShieldCheck, Sparkles, Sun, Users, X } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Check, CheckCheck, ChevronRight, CircleDot, Download, Eraser, ExternalLink, Flag, GitBranch, LayoutDashboard, LayoutGrid, LoaderCircle, LockKeyhole, Maximize2, Menu, Moon, Network, Play, QrCode, RefreshCw, ShieldCheck, Sparkles, Sun, Users, X } from 'lucide-react';
 import { activitySummary, concurrenceActor, first, humanConcurred, label, roleAttention, time } from './helpers';
 import { Specialist } from './Specialist';
 import { Badge, BulletList, DataFields, Empty, EvidenceDrawer, EvidenceTable, eventSummary, Modal, ROLE_META, roleMetaFor, SectionHeading, Status } from './ui';
@@ -16,15 +16,30 @@ import { clinicalCaseKind } from './caseProfiles';
 import { documentStatus, Outcome, OutcomeBanner } from './Outcome';
 import { HOSPITAL, PatientBanner, RoleCaseSummary, Workstation } from './HospitalChrome';
 import { SimilarCases } from './SimilarCases';
+import { DemoExplainer, EVENT_NAME, Join, JoinCard, joinUrl, MeetingStage, ParticipantBar } from './Join';
 
 type Drafts = Partial<Record<Role, string>>;
+function roleFromUrl(): Role | null {
+  const value = new URLSearchParams(window.location.search).get('role');
+  return ROLES.includes(value as Role) ? value as Role : null;
+}
+// A role link (?role=radiology) can be shared or bookmarked; other query parameters are kept.
+function syncRoleInUrl(workspace: Workspace) {
+  const url = new URL(window.location.href);
+  if (ROLES.includes(workspace as Role)) url.searchParams.set('role', workspace);
+  else url.searchParams.delete('role');
+  if (url.href !== window.location.href) window.history.replaceState(null, '', url);
+}
 const MODE_LABEL: Record<Mode, string> = { rehearsal: 'Scripted demonstration', azure: 'Live AI review' };
 
 export default function App() {
   const api = useMeeting();
   const { config, pending } = api;
   const meeting = useMemo(() => presentMeeting(api.meeting), [api.meeting]);
-  const [workspace, setWorkspace] = useState<Workspace>('cases');
+  const [workspace, setWorkspace] = useState<Workspace>(() => roleFromUrl() ?? 'join');
+  const presenter = Boolean(config?.presenter);
+  const landed = useRef(false);
+  const unlocked = useRef(false);
   const [selectedCase, setSelectedCase] = useState('');
   const [showPlan, setShowPlan] = useState(false);
   const [mode, setMode] = useState<Mode>('azure');
@@ -52,6 +67,22 @@ export default function App() {
     const initialMode = meeting?.mode ?? config.default_mode;
     setMode(config.modes.includes(initialMode) ? initialMode : config.modes[0]);
   }, [api.loading, config, meeting?.mode]);
+  // Participants land on the join screen. A presenter screen (the big screen) lands on
+  // case selection; without a configured key every screen is a presenter screen.
+  useEffect(() => {
+    if (!config) return;
+    if (!landed.current) {
+      landed.current = true;
+      if (config.presenter && workspace === 'join' && !roleFromUrl()) setWorkspace('cases');
+    }
+    // Unlocking reloads the configuration; move on only once the server confirms presenter access.
+    if (config.presenter && unlocked.current) {
+      unlocked.current = false;
+      if (workspace === 'join') setWorkspace('cases');
+    }
+    if (!config.presenter && workspace !== 'join' && !ROLES.includes(workspace as Role)) setWorkspace('join');
+  }, [config, workspace]);
+  useEffect(() => { syncRoleInUrl(workspace); }, [workspace]);
   const meetingId = meeting?.id;
   // The orchestrator opening a case, or returning the room to standby, resets every
   // participant screen: unsent drafts, review comments and open overlays from the
@@ -80,28 +111,33 @@ export default function App() {
     if (guidance && await api.mutate('steer', { role: activeRole, guidance })) setDrafts(current => ({ ...current, [activeRole]: current[activeRole]?.trim() === guidance ? '' : current[activeRole] }));
   };
   const readyForAction = Boolean(meeting && !meeting.busy && !pending && meeting.phase !== 'DECISION_CAPTURED');
+  const unlockPresenter = async (secret: string) => {
+    if (await api.authenticate(secret)) unlocked.current = true;
+  };
 
   return <div className={`app min-h-dvh bg-cp-bg text-cp-text ${workspace === 'wall' ? 'wall-mode' : ''}`}>
     <a className="skip-link sr-only fixed left-3 top-3 z-50 focus:not-sr-only focus:rounded-lg focus:border-2 focus:border-cp-accent focus:bg-cp-surface focus:p-3" href="#main">Skip to main content</a>
-    <div className="demo-banner flex min-h-7 items-center justify-center gap-2 bg-cp-text px-3 py-1 text-center text-[9px] tracking-widest text-cp-bg"><ShieldCheck size={12} /><span>DEMONSTRATION SYSTEM · NOT FOR CLINICAL USE</span></div>
+    <div data-testid="demo-banner" className="demo-banner flex min-h-7 flex-wrap items-center justify-center gap-x-2 gap-y-0.5 bg-cp-text px-3 py-1 text-center text-[9px] tracking-widest text-cp-bg"><ShieldCheck size={12} /><strong className="font-semibold">{EVENT_NAME.toUpperCase()} · LIVE DEMONSTRATION</strong><span>· FICTIONAL PATIENTS · NOT FOR CLINICAL USE</span></div>
     <header data-testid="hospital-bar" className="app-header flex min-h-14 flex-wrap items-center justify-between gap-x-5 gap-y-2 border-b border-cp-chrome bg-cp-chrome px-3 py-2 text-cp-chrome-fg sm:px-6">
-      <button className="icon-button mobile-menu text-cp-chrome-fg! lg:hidden" aria-label="Toggle workspace navigation" aria-expanded={mobileNav} onClick={() => setMobileNav(value => !value)}><Menu size={21} /></button>
-      <button className="brand flex items-center gap-3 border-0! bg-[inherit]! p-0 text-left text-cp-chrome-fg! [&_strong]:block [&_strong]:text-sm [&_strong]:tracking-widest [&_small]:mt-1 [&_small]:block [&_small]:text-[9px] [&_small]:tracking-wide [&_small]:text-cp-chrome-muted max-sm:[&_strong]:text-[11px] max-sm:[&_strong]:tracking-wide max-sm:gap-2 max-sm:[&_.brand-mark]:size-8" aria-label="MDT Observatory home" onClick={() => selectWorkspace('central')}><span aria-hidden="true" className="brand-mark flex size-9 shrink-0 items-center justify-center rounded-md bg-cp-chrome-fg text-2xl font-black leading-none text-cp-chrome">+</span><span><strong>MDT / OBSERVATORY</strong><small>{HOSPITAL.name} <span className="opacity-80">(fictional)</span> · {HOSPITAL.department}</small></span></button>
+      {presenter && <button className="icon-button mobile-menu text-cp-chrome-fg! lg:hidden" aria-label="Toggle workspace navigation" aria-expanded={mobileNav} onClick={() => setMobileNav(value => !value)}><Menu size={21} /></button>}
+      <button className="brand flex items-center gap-3 border-0! bg-[inherit]! p-0 text-left text-cp-chrome-fg! [&_strong]:block [&_strong]:text-sm [&_strong]:tracking-widest [&_small]:mt-1 [&_small]:block [&_small]:text-[9px] [&_small]:tracking-wide [&_small]:text-cp-chrome-muted max-sm:[&_strong]:text-[11px] max-sm:[&_strong]:tracking-wide max-sm:gap-2 max-sm:[&_.brand-mark]:size-8" aria-label="MDT Observatory home" onClick={() => selectWorkspace(presenter ? 'central' : 'join')}><span aria-hidden="true" className="brand-mark flex size-9 shrink-0 items-center justify-center rounded-md bg-cp-chrome-fg text-2xl font-black leading-none text-cp-chrome">+</span><span><strong>MDT / OBSERVATORY</strong><small>{HOSPITAL.name} <span className="opacity-80">(fictional)</span> · {HOSPITAL.department}</small></span></button>
       <div className="header-actions ml-auto flex flex-wrap items-center justify-end gap-x-5 gap-y-2">
+        <span data-testid="event-badge" className="hidden rounded-full border border-cp-chrome-muted px-2.5 py-1 text-[10px] font-semibold tracking-wider 2xl:inline">{EVENT_NAME}</span>
         <Workstation workspace={workspace} />
         <span className={`connection hidden items-center gap-2 text-xs text-cp-chrome-muted md:inline-flex ${api.connection}`} role="status"><span className="status-dot inline-block size-1.5 shrink-0 rounded-full bg-cp-success" />{api.connection === 'online' ? 'Live connection' : label(api.connection)}</span>
-        <button className="text-button guide-button hidden text-cp-chrome-fg! xl:inline-flex max-xl:hidden!" onClick={() => setShowGuide(true)}>Presenter guide <ArrowUpRight size={14} /></button>
+        {presenter && <button className="text-button guide-button hidden text-cp-chrome-fg! xl:inline-flex max-xl:hidden!" onClick={() => setShowGuide(true)}>Presenter guide <ArrowUpRight size={14} /></button>}
         <div className="flex items-center gap-2">
           <button data-testid="theme-toggle" className="button secondary min-h-9! max-sm:size-9 max-sm:p-0" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`} aria-pressed={theme === 'dark'} onClick={toggleTheme}>{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}<span className="hidden sm:inline">{theme === 'dark' ? 'Dark theme' : 'Light theme'}</span></button>
           <button data-testid="theme-system" className="text-button hidden text-cp-chrome-fg! sm:inline-flex max-sm:hidden!" onClick={useSystemTheme}>Use system</button>
         </div>
       </div>
     </header>
-    {meeting && workspace !== 'cases' && <PatientBanner meeting={meeting} showCase={() => setShowCase(true)} />}
-    <div className="shell grid min-h-[calc(100dvh-108px)] lg:grid-cols-[220px_minmax(0,1fr)]">
-      <aside className={`sidebar hidden flex-col gap-5 border-r border-cp-border bg-cp-bg-elevated p-4 lg:sticky lg:top-0 lg:flex lg:max-h-dvh lg:self-start lg:overflow-y-auto ${mobileNav ? 'is-open flex! absolute left-0 top-36 z-30 w-72 max-w-[92vw] border-b border-cp-border shadow-[var(--cp-shadow)] lg:sticky lg:w-auto lg:shadow-none' : ''}`} aria-label="Demo control">
+    {meeting && workspace !== 'cases' && workspace !== 'join' && <PatientBanner meeting={meeting} showCase={() => setShowCase(true)} />}
+    <div className={`shell grid min-h-[calc(100dvh-108px)] ${presenter ? 'lg:grid-cols-[220px_minmax(0,1fr)]' : ''}`}>
+      {presenter && <aside className={`sidebar hidden flex-col gap-5 border-r border-cp-border bg-cp-bg-elevated p-4 lg:sticky lg:top-0 lg:flex lg:max-h-dvh lg:self-start lg:overflow-y-auto ${mobileNav ? 'is-open flex! absolute left-0 top-36 z-30 w-72 max-w-[92vw] border-b border-cp-border shadow-[var(--cp-shadow)] lg:sticky lg:w-auto lg:shadow-none' : ''}`} aria-label="Demo control">
         <div className="sidebar-heading flex items-center justify-between gap-2 [&_.badge]:text-[8px]"><p className="eyebrow">DEMO CONTROL</p><Badge>LIVE MDT</Badge></div>
         <nav aria-label="Meeting and role workspaces">
+          <NavItem testId="view-join" selected={workspace === 'join'} onClick={() => selectWorkspace('join')} icon={<QrCode size={18} />} title="Join screen" detail="QR code for participants" />
           <NavItem testId="view-cases" selected={workspace === 'cases'} onClick={() => selectWorkspace('cases')} icon={<LayoutGrid size={18} />} title="Case selection" detail="Choose or resume a case" />
           <NavItem testId="view-central" selected={workspace === 'central'} onClick={() => selectWorkspace('central')} icon={<LayoutDashboard size={18} />} title="Central MDT" detail={meeting ? statusLabel(meeting.phase) : 'Shared meeting state'} />
           <NavItem testId="view-chair" selected={workspace === 'chair'} onClick={() => selectWorkspace('chair')} icon={<GitBranch size={18} />} title="Chair / orchestrator" detail="Direct the meeting" />
@@ -111,28 +147,32 @@ export default function App() {
           {ROLES.map(role => { const meta = roleMetaFor(role, meeting); const Icon = meta.icon; const attention = meeting ? roleAttention(meeting, role) : null; return <NavItem key={role} testId={`view-${role}`} specialty={role} selected={workspace === role} onClick={() => selectWorkspace(role)} icon={<Icon size={18} />} title={meta.label} detail={attention?.title ?? meta.description} active={attention?.running} />; })}
         </nav>
         <div className="sidebar-bottom mt-auto pt-12 [&_strong]:text-xs [&_p]:my-4 [&_p]:text-[11px] [&_p]:leading-7 [&_p]:text-cp-text-muted [&_svg]:text-cp-accent"><div className="row flex items-center gap-2"><CircleDot size={17} /><strong>Human review required</strong></div><p>Specialty reviews are advisory. Every assessment, source and condition remains inspectable, and the clinical decision is recorded by people.</p><span className="mono font-mono text-[10px] tracking-wide">OBSERVATORY / {config?.version ?? '1.0'}</span></div>
-      </aside>
+      </aside>}
       <main id="main" tabIndex={-1} data-specialty={isRole ? workspace : undefined} className={`mx-auto w-full min-w-0 max-w-[1900px] px-3 pb-6 sm:px-6 xl:px-8 ${roleLayout ? `${roleLayout.shell} ${roleLayout.canvas}` : ''}`}>
         {!themeSaved && <p data-testid="theme-storage-notice" role="status" className="mt-3 text-xs text-cp-text-muted">Theme changes apply to this visit; this browser cannot save a theme preference.</p>}
         <div className="page-toolbar flex min-h-14 flex-wrap items-center justify-between gap-3 py-2.5">
-          <div className="breadcrumb flex items-center gap-2 text-xs text-cp-text-soft [&_strong]:font-medium [&_strong]:text-cp-text-muted"><span>{HOSPITAL.department.split(' · ')[0]}</span><ChevronRight size={13} /><span>MDT Observatory</span><ChevronRight size={13} /><strong>{isRole ? roleMetaFor(workspace as Role, meeting).label : workspace === 'cases' ? 'Case selection' : workspace === 'central' ? 'Central MDT' : workspace === 'chair' ? 'Chair control' : workspace === 'outcome' ? 'Outcome & letters' : 'Workspace wall'}</strong></div>
+          <div className="breadcrumb flex items-center gap-2 text-xs text-cp-text-soft [&_strong]:font-medium [&_strong]:text-cp-text-muted"><span>{HOSPITAL.department.split(' · ')[0]}</span><ChevronRight size={13} /><span>MDT Observatory</span><ChevronRight size={13} />          <strong>{isRole ? roleMetaFor(workspace as Role, meeting).label : workspace === 'join' ? 'Join the meeting' : workspace === 'cases' ? 'Case selection' : workspace === 'central' ? 'Central MDT' : workspace === 'chair' ? 'Chair control' : workspace === 'outcome' ? 'Outcome & letters' : 'Workspace wall'}</strong></div>
           <div className="row flex items-center gap-2 wrap flex-wrap toolbar-controls ml-auto max-w-full min-w-0 justify-end [&_.button]:text-xs [&_select]:max-w-full [&_select]:text-xs">
-            {meeting && <Badge tone="accent">Current: {MODE_LABEL[meeting.mode]}</Badge>}
-            <label className="sr-only" htmlFor="mode">{meeting ? 'Mode for next case' : 'Execution mode'}</label>
-            <select data-testid="mode-select" id="mode" value={mode} onChange={event => { modeInitialized.current = true; setMode(event.target.value as Mode); }} disabled={!config || config.modes.length === 0 || pending || Boolean(meeting?.busy)}>
-              {config?.modes.length ? config.modes.map(value => <option key={value} value={value}>{MODE_LABEL[value]}</option>) : <option value="rehearsal">Loading execution modes...</option>}
-            </select>
-            {workspace !== 'cases' && <button data-testid="choose-case" className="button secondary bg-cp-surface text-cp-text" onClick={() => selectWorkspace('cases')}><LayoutGrid size={14} />Choose case</button>}
-            {meeting && <button className="icon-button" aria-label="Export meeting and provenance as JSON" disabled={pending} onClick={() => void api.download()}><Download size={17} /></button>}
-          </div>
-        </div>
-        {api.error && <div className="alert global-alert" role="alert"><Flag size={18} /><span>{api.error}</span><button className="text-button" onClick={api.reconnect}>Reconnect</button><button className="icon-button" aria-label="Dismiss error" onClick={api.clearError}><X size={17} /></button></div>}
-        {meeting?.error && <div className="alert" role="alert"><Flag size={18} /><span>{meeting.error}</span><button className="button secondary" disabled={pending || meeting.busy} onClick={() => void api.mutate('retry', {})}><RefreshCw size={15} />Retry specialist review</button></div>}
+                      {!presenter && isRole && <ParticipantBar role={workspace as Role} change={() => selectWorkspace('join')} />}
+                      {meeting && <Badge tone="accent">Current: {MODE_LABEL[meeting.mode]}</Badge>}
+                      {presenter && <>
+                      <label className="sr-only" htmlFor="mode">{meeting ? 'Mode for next case' : 'Execution mode'}</label>
+                      <select data-testid="mode-select" id="mode" value={mode} onChange={event => { modeInitialized.current = true; setMode(event.target.value as Mode); }} disabled={!config || config.modes.length === 0 || pending || Boolean(meeting?.busy)}>
+                        {config?.modes.length ? config.modes.map(value => <option key={value} value={value}>{MODE_LABEL[value]}</option>) : <option value="rehearsal">Loading execution modes...</option>}
+                      </select>
+                      {workspace !== 'cases' && <button data-testid="choose-case" className="button secondary bg-cp-surface text-cp-text" onClick={() => selectWorkspace('cases')}><LayoutGrid size={14} />Choose case</button>}
+                      {meeting && <button className="icon-button" aria-label="Export meeting and provenance as JSON" disabled={pending} onClick={() => void api.download()}><Download size={17} /></button>}
+                      </>}
+                    </div>
+                  </div>
+                  {api.error && <div className="alert global-alert" role="alert"><Flag size={18} /><span>{api.error}</span><button className="text-button" onClick={api.reconnect}>Reconnect</button><button className="icon-button" aria-label="Dismiss error" onClick={api.clearError}><X size={17} /></button></div>}
+                  {meeting?.error && <div className="alert" role="alert"><Flag size={18} /><span>{meeting.error}</span>{presenter ? <button className="button secondary" disabled={pending || meeting.busy} onClick={() => void api.mutate('retry', {})}><RefreshCw size={15} />Retry specialist review</button> : <span className="text-xs text-cp-text-muted">The demo team will retry from the chair's screen.</span>}</div>}
         {api.connection === 'reconnecting' && <div className="reconnect-notice mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-cp-warning bg-cp-surface p-4 text-sm" role="status"><RefreshCw size={15} />Connection interrupted. Reconnecting to the same meeting; your input is preserved.<button className="text-button" onClick={api.reconnect}>Reconnect now</button></div>}
-        {workspace === 'cases' ? <CaseSelection cases={api.cases} selected={selectedCase} select={setSelectedCase} meeting={meeting} loading={api.loading} canStart={Boolean(selectedCase && config?.modes.length) && !pending && !api.loading && !meeting?.busy} mode={mode} start={() => void start()} resume={() => selectWorkspace('central')} clearRoom={() => void api.clearRoom()} pending={pending} /> : !meeting ? (isRole ? <RoleStandby role={workspace as Role} mode={mode} /> : <Welcome loading={api.loading} canStart={!api.loading} start={() => selectWorkspace('cases')} mode={mode} />) : <>
+        {workspace === 'join' ? <Join meeting={meeting} presenter={presenter} url={joinUrl()} choose={selectWorkspace} openPresenter={api.requestAuth} openCases={() => selectWorkspace('cases')} /> : workspace === 'cases' ? <CaseSelection cases={api.cases} selected={selectedCase} select={setSelectedCase} meeting={meeting} loading={api.loading} canStart={Boolean(selectedCase && config?.modes.length) && !pending && !api.loading && !meeting?.busy} mode={mode} start={() => void start()} resume={() => selectWorkspace('central')} clearRoom={() => void api.clearRoom()} pending={pending} /> : !meeting ? (isRole ? <RoleStandby role={workspace as Role} mode={mode} /> : <><JoinCard url={joinUrl()} open={() => selectWorkspace('join')} /><Welcome loading={api.loading} canStart={!api.loading} start={() => selectWorkspace('cases')} mode={mode} /></>) : <>
           <div className={`grid items-start gap-5 ${isRole ? '' : 'xl:grid-cols-[minmax(0,1fr)_260px]'}`}>
           <div className="min-w-0">
           {isRole && <RoleCaseSummary meeting={meeting} showCase={() => setShowCase(true)} />}
+          {isRole && <MeetingStage meeting={meeting} />}
           {!isRole && <PhaseRail meeting={meeting} compact />}
           {workspace === 'central' && <>
             <OutcomeBanner meeting={meeting} open={() => selectWorkspace('outcome')} />
@@ -152,9 +192,9 @@ export default function App() {
           {workspace === 'wall' && <><div className="section-heading mb-5 flex items-center justify-between gap-4 [&_.eyebrow]:mb-1 [&>svg]:text-[var(--cp-role,var(--cp-accent))]"><div><p className="eyebrow">ONE CASE · SEVEN INDEPENDENT WORKSPACES</p><h1>Specialty workspaces</h1></div><Badge pulse={meeting.busy} tone="accent">{meeting.busy ? 'Reviews in progress' : `${openQuestions} open questions`}</Badge></div><div className="wall-grid mb-6 grid gap-4 md:grid-cols-2 2xl:grid-cols-3">{ROLES.map(role => <RoleCard key={role} role={role} meeting={meeting} open={() => selectWorkspace(role)} expanded />)}</div><FrictionPanel meeting={meeting} pending={pending} followup={() => void api.mutate('followup', {})} />{meeting.plan && <PlanPanel meeting={meeting} role={activeRole} setRole={setReviewRole} comment={comments[activeRole] ?? ''} setComment={value => setComments(current => ({ ...current, [activeRole]: value }))} pending={pending} mutate={api.mutate} inspect={setEvidence} />}</>}
           {isRole && <Specialist role={workspace as Role} meeting={meeting} pending={pending} guidance={drafts[workspace as Role] ?? ''} setGuidance={value => setDrafts(current => ({ ...current, [workspace]: value }))} steer={steer} mutate={api.mutate} inspect={setEvidence} review={meeting.plan && <PlanPanel compact showPlan={() => setShowPlan(true)} meeting={meeting} role={workspace as Role} comment={comments[workspace as Role] ?? ''} setComment={value => setComments(current => ({ ...current, [workspace]: value }))} pending={pending} mutate={api.mutate} inspect={setEvidence} />} />}
           </div>
-          {!isRole && <aside data-testid="case-rail" aria-label="Case snapshot" className="min-w-0 xl:sticky xl:top-4"><CaseHeader meeting={meeting} showCase={() => setShowCase(true)} compact /></aside>}
+          {!isRole && <aside data-testid="case-rail" aria-label="Case snapshot" className="min-w-0 xl:sticky xl:top-4"><CaseHeader meeting={meeting} showCase={() => setShowCase(true)} compact />{workspace === 'central' && <div className="mt-4"><JoinCard url={joinUrl()} open={() => selectWorkspace('join')} /></div>}</aside>}
           </div>
-          <footer className="meeting-footer flex flex-wrap items-center justify-between gap-3 py-6 text-[10px] text-cp-text-muted"><span className="row flex items-center gap-2"><span className="status-dot inline-block size-1.5 shrink-0 rounded-full bg-cp-success" />{meeting.closed_at ? `Decision captured ${time(meeting.closed_at)}` : 'Live shared state · changes recorded with provenance'}</span><span className="mono font-mono text-[10px] tracking-wide">ROUND {String(meeting.round).padStart(2, '0')} / {meeting.id.slice(0, 8)}</span>{readyForAction && <button className="text-button" onClick={() => selectWorkspace('chair')}>Chair controls <ArrowRight size={13} /></button>}</footer>
+          <footer className="meeting-footer flex flex-wrap items-center justify-between gap-3 py-6 text-[10px] text-cp-text-muted"><span className="row flex items-center gap-2"><span className="status-dot inline-block size-1.5 shrink-0 rounded-full bg-cp-success" />{meeting.closed_at ? `Decision captured ${time(meeting.closed_at)}` : 'Live shared state · changes recorded with provenance'}</span><span className="mono font-mono text-[10px] tracking-wide">ROUND {String(meeting.round).padStart(2, '0')} / {meeting.id.slice(0, 8)}</span>{readyForAction && presenter && <button className="text-button" onClick={() => selectWorkspace('chair')}>Chair controls <ArrowRight size={13} /></button>}</footer>
         </>}
       </main>
     </div>
@@ -171,7 +211,7 @@ export default function App() {
         <li><strong>65–90s · Bring the decision back to people</strong><p>Compare the alternatives, review conditions and concur as each required human role, or object with a reason. Export the captured decision.</p></li>
       </ol><p className="text-sm leading-7 text-cp-text-muted">No timer advances the clinical workflow. If work fails, use Retry specialist review in Chair control.</p>
     </Modal>}
-    {api.needsAuth && <Modal title="Presenter access" close={() => { setToken(''); api.dismissAuth(); }}><p>Enter the presenter secret to access this meeting. It is used only to establish access and is not saved by this page.</p><form onSubmit={event => { event.preventDefault(); const secret = token; setToken(''); void api.authenticate(secret); }}><label htmlFor="presenter-token">Presenter secret</label><input id="presenter-token" type="password" autoComplete="current-password" value={token} onChange={event => setToken(event.target.value)} required autoFocus />{api.error && <p role="alert" className="error-text my-3 text-sm text-cp-danger">{api.error}</p>}<button className="button primary" disabled={pending || !token.trim()}><LockKeyhole size={16} />Unlock presenter controls</button></form></Modal>}
+    {api.needsAuth && <Modal title="Presenter access" close={() => { setToken(''); api.dismissAuth(); }}><p>The chair's screen — choosing cases and running the rounds — is for the demo team. Enter the presenter key to open it. Participants do not need a key. The key is used only to establish access and is not saved by this page.</p><form onSubmit={event => { event.preventDefault(); const secret = token; setToken(''); void unlockPresenter(secret); }}><label htmlFor="presenter-token">Presenter secret</label><input id="presenter-token" type="password" autoComplete="current-password" value={token} onChange={event => setToken(event.target.value)} required autoFocus />{api.error && <p role="alert" className="error-text my-3 text-sm text-cp-danger">{api.error}</p>}<button className="button primary" disabled={pending || !token.trim()}><LockKeyhole size={16} />Unlock presenter controls</button></form></Modal>}
   </div>;
 }
 
@@ -200,8 +240,8 @@ export function RoleStandby({ role, mode }: { role: Role; mode: Mode }) {
       <div className="flex items-start gap-4">
         <span className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-cp-border text-cp-text-muted"><LoaderCircle size={24} className="motion-safe:animate-spin" /></span>
         <div className="min-w-0">
-          <h2 className="text-xl">Waiting for the orchestrator to open a case</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-cp-text-muted">This screen is connected to the meeting room and is up to date. It stays empty until a case is activated. When the orchestrator opens one, this workspace fills with the {meta.label.toLowerCase()} review for that patient, and the reasoning is shown here step by step as it is produced.</p>
+          <h2 className="text-xl">Waiting for the chair to open a case</h2>
+          <p className="mt-3 max-w-2xl text-sm leading-7 text-cp-text-muted">You are in the meeting as the {meta.person.toLowerCase()}, and this screen is connected live. When the chair opens a case on the big screen, it fills automatically with your specialty's briefing and your AI assistant starts reasoning — step by step, where you can follow it. Nothing to reload.</p>
           <p className="mt-3 max-w-2xl text-sm leading-7 text-cp-text-muted">No patient record is loaded. Nothing from a previous meeting is shown here.</p>
           <p className="mt-4 font-mono text-[10px] tracking-widest text-cp-text-soft">CONNECTED · {MODE_LABEL[mode].toUpperCase()} · NO ACTIVE CASE</p>
         </div>
@@ -211,6 +251,7 @@ export function RoleStandby({ role, mode }: { role: Role; mode: Mode }) {
         <ol className="grid gap-3 sm:grid-cols-3 list-none [&>li]:flex [&>li]:items-center [&>li]:gap-3 [&>li]:rounded-xl [&>li]:border [&>li]:border-cp-border [&>li]:bg-cp-bg-elevated [&>li]:p-4 [&>li]:text-[13px] [&>li]:leading-6 [&_span]:font-mono [&_span]:text-[11px] [&_span]:text-cp-text-soft">{layout.focus.map((focus, index) => <li key={focus}><span>{String(index + 1).padStart(2, '0')}</span>{focus}</li>)}</ol>
       </div>
     </div>
+    <div className="mt-5"><DemoExplainer /></div>
   </section>;
 }
 function CaseHeader({ meeting, showCase, compact = false }: { meeting: Meeting; showCase: () => void; compact?: boolean }) {

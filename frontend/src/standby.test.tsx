@@ -22,8 +22,9 @@ describe('a specialty screen opened before any case is activated', () => {
       const markup = renderToStaticMarkup(<RoleStandby role={role} mode="rehearsal" />);
       expect(markup).toContain(`data-testid="standby-${role}"`);
       expect(markup).toContain(ROLE_LAYOUTS[role].title);
-      expect(markup).toContain('Waiting for the orchestrator to open a case');
+      expect(markup).toContain('Waiting for the chair to open a case');
       expect(markup).toContain('No patient record is loaded');
+      expect(markup).toContain('data-testid="demo-explainer"');
       for (const focus of ROLE_LAYOUTS[role].focus) expect(markup).toContain(focus);
     }
   });

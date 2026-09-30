@@ -28,9 +28,10 @@ export function useMeeting() {
       try {
         const settings = await request<Config>('/config', undefined, controller.signal);
         setConfig(settings);
+        // Participants follow the room without the presenter key; only presenters load the case catalogue.
         const [current, available] = await Promise.all([
           request<Meeting | null>('/meeting', undefined, controller.signal),
-          request<CaseSummary[]>('/cases', undefined, controller.signal),
+          settings.presenter ? request<CaseSummary[]>('/cases', undefined, controller.signal) : Promise.resolve([]),
         ]);
         if (!controller.signal.aborted) {
           setCases(available);
@@ -48,9 +49,8 @@ export function useMeeting() {
   const meetingId = meeting?.id;
   // One room channel per screen, live from load: a screen opened before any case
   // is activated, and a screen still showing the previous case, both follow the
-  // orchestrator without a manual reload.
+  // orchestrator without a manual reload. The room is open to every participant.
   useEffect(() => {
-    if (needsAuth) return;
     let active = true;
     const stream = new EventSource('/api/room/stream', { withCredentials: true });
     setConnection('connecting');
@@ -69,7 +69,7 @@ export function useMeeting() {
     stream.onerror = () => {
       if (!active) return;
       setConnection('reconnecting');
-      // EventSource hides HTTP status. A snapshot request makes authentication failures actionable.
+      // EventSource hides HTTP status; a snapshot request makes connection failures actionable.
       void request<Meeting | null>('/meeting').then(snapshot => {
         if (active) setMeeting(current => snapshot ? acceptSnapshot(current, snapshot) : null);
       }).catch(cause => {
@@ -77,7 +77,7 @@ export function useMeeting() {
       });
     };
     return () => { active = false; stream.close(); };
-  }, [needsAuth, generation, report]);
+  }, [generation, report]);
 
   async function run(action: () => Promise<void>): Promise<boolean> {
     if (operation.current) return false;
@@ -129,6 +129,7 @@ export function useMeeting() {
     config, cases, meeting, loading, pending, error, needsAuth, connection,
     mutate, start, authenticate, download, clearRoom,
     clearError: () => setError(null),
+    requestAuth: () => setNeedsAuth(true),
     dismissAuth: () => setNeedsAuth(false),
     reconnect: () => { setError(null); setGeneration(value => value + 1); },
   };

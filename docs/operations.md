@@ -269,8 +269,13 @@ identified directory, never a wildcard or the temp root.
 .\scripts\verify-azure.ps1 -TimeoutSeconds 300
 ```
 
-The timeout accepts 10-1800 seconds. `/healthz` and `/readyz` are public;
-patient-data reads/writes/exports/streams require the presenter HttpOnly cookie.
+The timeout accepts 10-1800 seconds. `/healthz` and `/readyz` are public. The
+shared room (`/api/meeting`, meeting reads and streams) and participant commands
+(steer, concur, object, memory) are open to anyone with the URL; the data is
+fictional. Case catalog, start, follow-up, retry, cohort, communications, export
+and room clear require the presenter HttpOnly cookie. Verification asserts that
+anonymous `/api/config` reports `presenter: false`, anonymous `/api/meeting`
+returns 200, and `/api/cases` and export return 401.
 With the token present, verification checks `/api/auth`, Secure/HttpOnly/
 SameSite=Strict attributes and an authenticated read. Without it, that part is
 explicitly skipped. Verification never changes a meeting.

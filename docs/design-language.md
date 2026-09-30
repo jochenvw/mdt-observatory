@@ -321,6 +321,15 @@ When progress depends on a human, place a warning-bordered alert directly below 
 
 Show it only while the dependency is genuinely open. An insufficient reply keeps it visible and says why.
 
+### Participant entry and meeting stage
+
+Shared-room products that non-specialists join from their own devices need an entry screen and a meeting-stage strip:
+
+- **Entry screen:** event badge, room status in plain words (standby, or which case is in progress), one large button per role, and a short "what you are about to see" explainer. The presenter view adds a join card: the URL plus a QR code. The QR code stays black on white in both themes, so phones can scan it from a projected screen. This is the only deliberate exception to theme tokens.
+- **Participant bar:** "You are the {role}" with an explicit change-role action. Participants never see the navigation sidebar or presenter controls, only their own workspace.
+- **Meeting stage:** a numbered rail of 3–6 plain-language stages, the current round, one sentence saying what this stage means and live counts. It tells an audience with no background in AI where the process is and why.
+- **Demo banner:** a full-width strip above the header naming the event, the fact that it is a demonstration, and that the data is fictional.
+
 ### Reasoning path
 
 Present an agent's public account as a numbered sequence, each step with a label, a one-line explanation and bounded content:

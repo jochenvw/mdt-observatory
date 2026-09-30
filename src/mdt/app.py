@@ -110,13 +110,11 @@ def snapshot_stream(
     request: Request,
     queue: asyncio.Queue[str],
     event: str,
-    token: str,
     release: Callable[[], None],
 ) -> StreamingResponse:
-    """Stream queued snapshots to one screen until it disconnects or its session expires.
+    """Stream queued snapshots to one screen until it disconnects.
 
-    Heartbeats keep the connection open through idle periods and are the point at
-    which an expired presenter session is noticed and the stream closed.
+    Heartbeats keep the connection open through idle periods.
     """
 
     async def snapshots() -> AsyncIterator[str]:
@@ -126,8 +124,6 @@ def snapshot_stream(
                     snapshot = await asyncio.wait_for(queue.get(), timeout=15)
                     yield f"event: {event}\ndata: {snapshot}\n\n"
                 except TimeoutError:
-                    if token and not valid_cookie(request.cookies.get(COOKIE, ""), token):
-                        return
                     yield ": heartbeat\n\n"
         finally:
             release()
@@ -227,12 +223,19 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
             response.headers["Cache-Control"] = "no-store"
         return response
 
-    def authorized(request: Request) -> None:
-        if config.presenter_token and not valid_cookie(
+    def is_presenter(request: Request) -> bool:
+        return not config.presenter_token or valid_cookie(
             request.cookies.get(COOKIE, ""), config.presenter_token
-        ):
+        )
+
+    def authorized(request: Request) -> None:
+        if not is_presenter(request):
             raise HTTPException(401, "Presenter access required.")
 
+    # Participants join from a shared URL without the presenter secret. They may follow
+    # the room and act for a specialty (reply, instruct, confirm or object). Running the
+    # meeting — choosing, starting and clearing cases, follow-up rounds, letters,
+    # retries and exports — remains presenter-only.
     protected = [Depends(authorized)]
 
     @application.exception_handler(Conflict)
@@ -260,7 +263,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
         return {"status": "ready"}
 
     @application.get("/api/config")
-    async def configuration() -> dict[str, object]:
+    async def configuration(request: Request) -> dict[str, object]:
         modes = ["rehearsal"]
         if azure_mode_available():
             modes.append("azure")
@@ -268,6 +271,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
             "modes": modes,
             "default_mode": default_execution_mode(),
             "auth_required": bool(config.presenter_token),
+            "presenter": is_presenter(request),
             "version": VERSION,
             "disclaimer": "DEMONSTRATION SYSTEM. NOT FOR CLINICAL USE.",
         }
@@ -302,11 +306,11 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
         )
         return {"authenticated": True}
 
-    @application.get("/api/meeting", dependencies=protected)
+    @application.get("/api/meeting")
     async def latest(service: EngineDep) -> Meeting | None:
         return await service.current()
 
-    @application.get("/api/room/stream", dependencies=protected)
+    @application.get("/api/room/stream")
     async def room_stream(service: EngineDep, request: Request) -> StreamingResponse:
         """Live room channel every participant screen follows, meeting or not.
 
@@ -317,9 +321,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
         initial_room = await service.room_state()
         service.room_subscribers.add(queue)
         queue.put_nowait(initial_room)
-        return snapshot_stream(
-            request, queue, "room", config.presenter_token, lambda: _discard_room(service, queue)
-        )
+        return snapshot_stream(request, queue, "room", lambda: _discard_room(service, queue))
 
     @application.post("/api/room/clear", dependencies=protected)
     async def clear_room(service: EngineDep) -> dict[str, bool]:
@@ -381,11 +383,11 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
             raise HTTPException(422, "Azure mode requires endpoint and deployment configuration.")
         return await service.start(mode, body.case_id)
 
-    @application.get("/api/meetings/{meeting_id}", dependencies=protected)
+    @application.get("/api/meetings/{meeting_id}")
     async def meeting(meeting_id: str, service: EngineDep) -> Meeting:
         return await service.load(meeting_id)
 
-    @application.get("/api/meetings/{meeting_id}/stream", dependencies=protected)
+    @application.get("/api/meetings/{meeting_id}/stream")
     async def stream(meeting_id: str, service: EngineDep, request: Request) -> StreamingResponse:
         initial = await service.load(meeting_id)
         queue: asyncio.Queue[str] = asyncio.Queue(maxsize=2)
@@ -395,11 +397,10 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
             request,
             queue,
             "state",
-            config.presenter_token,
             lambda: _discard_meeting(service, meeting_id, queue),
         )
 
-    @application.post("/api/meetings/{meeting_id}/steer", dependencies=protected)
+    @application.post("/api/meetings/{meeting_id}/steer")
     async def steer(meeting_id: str, body: Steering, service: EngineDep) -> Meeting:
         return await service.steer(meeting_id, body.role, body.guidance)
 
@@ -407,11 +408,11 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     async def followup(meeting_id: str, service: EngineDep) -> Meeting:
         return await service.followup(meeting_id)
 
-    @application.post("/api/meetings/{meeting_id}/concur", dependencies=protected)
+    @application.post("/api/meetings/{meeting_id}/concur")
     async def concur(meeting_id: str, body: Vote, service: EngineDep) -> Meeting:
         return await service.concur(meeting_id, body.role, body.comment, body.plan_version)
 
-    @application.post("/api/meetings/{meeting_id}/object", dependencies=protected)
+    @application.post("/api/meetings/{meeting_id}/object")
     async def objection(meeting_id: str, body: Vote, service: EngineDep) -> Meeting:
         return await service.object(meeting_id, body.role, body.comment, body.plan_version)
 
@@ -448,7 +449,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
             meeting_id, audience, reviewer=body.reviewer, role=body.role
         )
 
-    @application.post("/api/meetings/{meeting_id}/memory", dependencies=protected)
+    @application.post("/api/meetings/{meeting_id}/memory")
     async def memory(meeting_id: str, body: MemoryAction, service: EngineDep) -> Meeting:
         return await service.memory(meeting_id, body.memory_id, body.action)
 

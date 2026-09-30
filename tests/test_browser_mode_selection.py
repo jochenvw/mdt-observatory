@@ -76,7 +76,7 @@ def test_explicit_mode_survives_late_initial_snapshot_and_start_payload(chosen, 
                 return route.fulfill(
                     json={
                         "modes": ["rehearsal", "azure"], "default_mode": "azure",
-                        "auth_required": False, "version": "test"
+                        "auth_required": False, "presenter": True, "version": "test"
                     }
                 )
             if path == "/api/meeting":
@@ -133,7 +133,7 @@ def test_active_mode_initializes_once_and_explicit_choice_survives_reconnect():
                 return route.fulfill(
                     json={
                         "modes": ["rehearsal", "azure"], "default_mode": "azure",
-                        "auth_required": False, "version": "test"
+                        "auth_required": False, "presenter": True, "version": "test"
                     }
                 )
             if path == "/api/meeting" or path == "/api/meetings/historical-meeting":
@@ -187,7 +187,7 @@ def test_new_room_defaults_to_live_ai_mode():
             if path == "/api/config":
                 return route.fulfill(json={
                     "modes": ["rehearsal", "azure"], "default_mode": "azure",
-                    "auth_required": False, "version": "test",
+                    "auth_required": False, "presenter": True, "version": "test",
                 })
             if path == "/api/meeting":
                 return route.fulfill(body="null", content_type="application/json")
