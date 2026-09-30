@@ -1,6 +1,16 @@
 # MDT Observatory deployment plan
 
-Status: Deployed - clinician-guidance and live-default release live. Image
+Status: Deployed - clinician-guidance cleanup release live. Image
+`acrmdtgy76frdpub6io.azurecr.io/mdt-observatory@sha256:39edac89b16775929792ae6d162e81ba3e7b1209e65a7ae98df0139fdece2774`,
+revision `mdt-observatory-vnet--r20260930065206-50a76e` at 100% traffic with one
+healthy replica. Built from `29f36dc` (redundant default-mode fallback removed;
+design-language patterns documented). Exact-image ARM validation and ResourceIdOnly
+what-if passed with no deletions. The first release attempt failed on a replica poll
+after the drain and before a new revision existed (no dual writer); the retry
+completed and the release script's verification passed. Post-release: `/healthz` and
+`/readyz` 200, `default_mode: azure`, and the new UI is present in the served bundle.
+
+Previous status: Deployed - clinician-guidance and live-default release live. Image
 `acrmdtgy76frdpub6io.azurecr.io/mdt-observatory@sha256:7bf1467b96938092e3bc3f5bacbbffa91542352cb2aee7f9b75340ea74ccaf4b`,
 revision `mdt-observatory-vnet--r20260930055736-297bb9` at 100% traffic with one
 healthy replica.
