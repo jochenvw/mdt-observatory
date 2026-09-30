@@ -217,6 +217,7 @@ def run():
                 return route.fulfill(
                     json={
                         "modes": ["rehearsal", "azure"],
+                        "default_mode": "azure",
                         "auth_required": auth_required,
                         "version": "test",
                     }

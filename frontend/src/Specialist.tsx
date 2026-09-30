@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { ArrowRight, ArrowUpRight, Brain, Check, ChevronDown, Clock3, Eye, Fingerprint, Focus, Heart, History, Layers, MessageSquareText, MoveUpRight, ScanLine, Send, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Brain, Check, ChevronDown, Clock3, Eye, Fingerprint, Focus, Heart, History, Layers, MessageSquareText, MoveUpRight, ScanLine, Send, ShieldCheck, Sparkles, TriangleAlert } from 'lucide-react';
 import { first, imagingSeries, label, needsHumanReply, roleAttention, text, time } from './helpers';
 import type { ImagingMeasurement } from './helpers';
 import { Badge, BulletList, DataFields, Empty, EvidenceTable, Modal, roleMetaFor, SectionHeading, Status } from './ui';
@@ -54,6 +54,11 @@ export function Specialist({ role, meeting, pending, guidance, setGuidance, stee
   const example = asking ? exampleReply : suggestedGuidance;
   const memories = meeting.memories.filter(item => item.role === role);
   const liveMemory = memory ? meeting.memories.find(item => item.id === memory.id) : null;
+  const focusReply = () => {
+    const field = document.getElementById(`guidance-${role}`);
+    field?.focus();
+    field?.scrollIntoView({ behavior: 'auto', block: 'center' });
+  };
   return <section data-testid={`workspace-${role}`} data-role={role} data-layout={layout.identity} aria-label={`${meta.label} specialist workspace`} className={layout.shell}>
     <div data-testid={`role-layout-${role}`} data-layout={layout.identity}>
     <header data-testid={`role-identity-${role}`} className={`workspace-heading mb-4 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 p-4 sm:grid-cols-[auto_minmax(0,1fr)_auto] ${layout.header}`}>
@@ -63,6 +68,16 @@ export function Specialist({ role, meeting, pending, guidance, setGuidance, stee
       <ol aria-label="Specialty focus" className="role-focus col-span-2 flex flex-wrap gap-3 border-t border-cp-border pt-3 text-[10px] sm:col-span-3">{layout.focus.map((focus, index) => <li key={focus} className="flex items-center gap-2"><span aria-hidden="true" className="font-mono text-[10px]">{String(index + 1).padStart(2, '0')}</span>{focus}</li>)}</ol>
     </header>
     <div data-testid="role-attention" role={attention.tone === 'danger' ? 'alert' : 'status'} className={`mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border-l-4 bg-cp-surface px-4 py-3 ${attention.tone === 'danger' ? 'border-cp-danger' : attention.tone === 'warning' ? 'border-cp-warning' : attention.tone === 'success' ? 'border-cp-success' : 'border-[var(--cp-role)]'}`}><Badge tone={attention.tone} pulse={attention.running}>{attention.title}</Badge><p className="text-xs leading-6">{attention.detail}</p></div>
+    {asking && <section data-testid="human-action-required" role="alert" className="mb-4 overflow-hidden rounded-2xl border-2 border-cp-warning bg-cp-surface shadow-[0_0_0_4px_color-mix(in_srgb,var(--cp-warning)_12%,transparent)]">
+      <div className="flex items-start gap-3 border-b border-cp-warning bg-[color-mix(in_srgb,var(--cp-warning)_12%,var(--cp-surface))] p-4 sm:p-5">
+        <span className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-full bg-cp-warning text-cp-text"><TriangleAlert size={21} /></span>
+        <div className="min-w-0"><p className="font-mono text-[10px] font-semibold tracking-widest text-cp-text">HUMAN FINDING REQUIRED · MDT BLOCKED</p><h2 className="mt-1 text-lg">The MDT is waiting for the {meta.person.toLowerCase()}</h2><p className="mt-2 text-sm leading-7 text-cp-text-muted">{stillOpen ? 'The previous reply did not report what was reviewed and found, so the dependency remains open.' : 'The agent cannot answer this from the supplied record. A specialist must review the source information and report the finding before the meeting can proceed.'}</p></div>
+      </div>
+      <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]">
+        <div><p className="text-xs font-semibold">The next MDT step hinges on:</p><p className="mt-2 text-sm leading-7">{clinicalText(questions[0].question)}</p>{questions[0].missing.length > 0 && <ul className="mt-3 list-disc space-y-1 pl-5 text-xs leading-6 text-cp-text-muted">{questions[0].missing.map(item => <li key={item}>{clinicalText(item)}</li>)}</ul>}</div>
+        <div className="rounded-xl border border-cp-border bg-cp-bg-elevated p-4"><p className="eyebrow">WHAT UNLOCKS THE MEETING</p><ol className="mt-3 space-y-2 text-xs leading-5">{['Review the requested source information.', 'Enter what you reviewed and found below.', 'The agent reassesses its specialist position.', 'The chair can continue the focused MDT round.'].map((step, index) => <li key={step} className="grid grid-cols-[24px_minmax(0,1fr)] gap-2"><span className="font-mono text-cp-accent">{String(index + 1).padStart(2, '0')}</span><span>{step}</span></li>)}</ol><button type="button" data-testid="go-to-human-reply" className="button primary mt-4 w-full" onClick={focusReply}>Enter the finding <ArrowRight size={15} /></button></div>
+      </div>
+    </section>}
     <div data-testid="activity-desk" className="grid items-start gap-4 md:grid-cols-[minmax(0,1fr)_minmax(260px,0.9fr)]">
       <section className="min-w-0 card p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h2 className="text-base">Review activity</h2><Badge>Newest first</Badge></div>
@@ -72,14 +87,14 @@ export function Specialist({ role, meeting, pending, guidance, setGuidance, stee
       </section>
       <div className="min-w-0 space-y-4">
         {review}
-        <details open={!review} className="min-w-0 card p-4 steering-panel">
-          <summary className="text-sm font-semibold"><MessageSquareText size={18} />{asking ? 'Your agent is asking you' : 'Instruct your agent'}</summary>
+        <details open={asking || !review} className={`min-w-0 card p-4 steering-panel ${asking ? 'border-2! border-cp-warning!' : ''}`}>
+          <summary className="text-sm font-semibold"><MessageSquareText size={18} />{asking ? `${meta.person} input required — enter it here` : 'Instruct your agent'}</summary>
           {asking ? <div data-testid="agent-question" role="status" className="my-3 rounded-xl border-l-4 border-cp-warning bg-cp-bg-elevated p-3 text-xs leading-6">
             <p><strong>{stillOpen ? 'Your last reply did not say what you reviewed, so I have kept this open: ' : 'I cannot settle this from the record alone: '}</strong>{clinicalText(questions[0].question)}</p>
             <div className="mt-1 text-cp-text-muted">{questions[0].missing.length > 0 && <><details className="inline [&[open]]:block"><summary className="inline cursor-pointer font-semibold text-cp-accent">What I need you to check ({questions[0].missing.length})</summary><ul className="my-2 list-disc space-y-1 pl-4 text-cp-text">{questions[0].missing.map(item => <li key={item}>{clinicalText(item)}</li>)}</ul></details></>}Tell me what you reviewed and found; “go ahead” is not enough.{questions.length > 1 ? ` ${questions.length - 1} more question${questions.length > 2 ? 's' : ''} follow.` : ''}</div>
           </div> : <p className="my-3 text-xs leading-6 text-cp-text-muted">You are the specialist. Tell your agent what to review, or challenge its assessment.</p>}
           <form onSubmit={event => { event.preventDefault(); void steer(); }}>
-            <label className="sr-only" htmlFor={`guidance-${role}`}>{asking ? 'Reply' : 'Instruction'} to the {meta.label} agent</label>
+            <label className={asking ? 'mb-2 block text-xs font-semibold text-cp-text' : 'sr-only'} htmlFor={`guidance-${role}`}>{asking ? 'Enter what you reviewed and found' : `Instruction to the ${meta.label} agent`}</label>
             <textarea data-testid="guidance-input" id={`guidance-${role}`} value={guidance} onChange={event => setGuidance(event.target.value)} placeholder={example} rows={3} maxLength={2000} />
             <div className="form-footer mt-3 flex flex-wrap items-center justify-between gap-3"><button type="button" className="text-button" onClick={() => setGuidance(example)} disabled={blocked}>{asking ? 'Use example reply' : 'Use suggested instruction'}</button><button data-testid="send-guidance" className="button primary" type="submit" disabled={blocked || !guidance.trim()}><Send size={15} />{asking ? 'Send reply' : 'Send instruction'}</button></div>
           </form>
@@ -119,32 +134,58 @@ export function Specialist({ role, meeting, pending, guidance, setGuidance, stee
 function ReasoningSteps({ state, open }: { state?: RoleState; open: () => void }) {
   const trace = state?.trace;
   const observations = clinicalItems(trace?.observations ?? []);
-  const steps: { label: string; body: string[]; tone?: string }[] = [
-    { label: 'Question being answered', body: [clinicalText(trace?.hypothesis ?? '', 'The specialist is establishing the clinical question for this case.')] },
-    { label: 'What was checked', body: (trace?.evidence_checking ?? []).length ? trace!.evidence_checking : ['Source records for this specialty are being retrieved.'] },
-    { label: 'What was found', body: observations.length ? observations : ['Findings will appear as the review progresses.'] },
-    { label: 'What remains uncertain', body: (trace?.uncertainties ?? []).length ? trace!.uncertainties : ['No uncertainty has been recorded yet.'], tone: 'warning' },
-    { label: 'Position taken', body: [clinicalText(trace?.assessment ?? '', 'Waiting for specialist review.')] },
-    { label: 'Next clinical question', body: [clinicalText(trace?.next_action ?? '', 'Continue reviewing the unresolved clinical questions.')] },
+  const steps: { label: string; explanation: string; body: string[]; tone?: string }[] = [
+    {
+      label: 'Trying to answer',
+      explanation: 'The clinical question guiding this specialist review.',
+      body: [clinicalText(trace?.hypothesis ?? '', 'The specialist is establishing the clinical question for this case.')],
+    },
+    {
+      label: 'Considered',
+      explanation: 'The records, findings or evidence used to examine that question.',
+      body: (trace?.evidence_checking ?? []).length ? trace!.evidence_checking : ['Source records for this specialty are being retrieved.'],
+    },
+    {
+      label: 'This showed',
+      explanation: 'The relevant observations found in the supplied information.',
+      body: observations.length ? observations : ['Findings will appear as the review progresses.'],
+    },
+    {
+      label: 'But this remains uncertain',
+      explanation: 'The limits the agent retained instead of resolving by assumption.',
+      body: (trace?.uncertainties ?? []).length ? trace!.uncertainties : ['No additional uncertainty has been recorded yet.'],
+      tone: 'warning',
+    },
+    {
+      label: 'So the current conclusion is',
+      explanation: 'The specialist assessment produced from the review above.',
+      body: [clinicalText(trace?.assessment ?? '', 'Waiting for the specialist assessment.')],
+    },
+    {
+      label: 'Next',
+      explanation: 'The next check, discussion or decision needed.',
+      body: [clinicalText(trace?.next_action ?? '', 'Continue reviewing the unresolved clinical questions.')],
+    },
   ];
   return <div data-testid="reasoning-steps" className="mb-4 rounded-xl border border-cp-border bg-cp-bg-elevated p-4">
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="font-mono text-[10px] tracking-wide text-cp-text-soft">HOW THIS SPECIALTY REACHED ITS POSITION / REVISION {state?.revision ?? 0}</p><button onClick={open} className="inline-flex min-h-8 items-center gap-1.5 text-[11px] font-semibold text-cp-accent">Full assessment <ArrowUpRight size={13} /></button></div>
+    <div className="mb-4 flex flex-wrap items-start justify-between gap-3"><div className="max-w-2xl"><p className="font-mono text-[10px] tracking-wide text-[var(--cp-role,var(--cp-accent))]">AGENT REVIEW · PUBLIC SUMMARY · REVISION {state?.revision ?? 0}</p><h3 className="mt-1 text-sm">How the agent moved from question to conclusion</h3><p className="mt-1 text-[11px] leading-5 text-cp-text-muted">Follow the question, information considered, finding, retained uncertainty and current conclusion. This is a concise clinical account, not private model deliberation.</p></div><button onClick={open} className="inline-flex min-h-8 items-center gap-1.5 text-[11px] font-semibold text-cp-accent">Full assessment <ArrowUpRight size={13} /></button></div>
     <ol className="list-none space-y-3">{steps.map((step, index) => <li key={step.label} className={`grid grid-cols-[22px_minmax(0,1fr)] gap-3 border-l-2 pl-3 ${step.tone === 'warning' ? 'border-cp-warning' : 'border-[var(--cp-role)]'}`}>
       <span aria-hidden="true" className="font-mono text-[11px] text-cp-text-soft">{String(index + 1).padStart(2, '0')}</span>
-      <div><p className="text-[11px] font-semibold uppercase tracking-wide text-cp-text-muted">{step.label}</p>{step.body.slice(0, 3).map((line, lineIndex) => <p key={lineIndex} className="mt-1 text-[13px] leading-6">{line}</p>)}</div>
+      <div><p className="text-[11px] font-semibold uppercase tracking-wide text-cp-text">{step.label}</p><p className="mt-0.5 text-[10px] leading-5 text-cp-text-soft">{step.explanation}</p>{step.body.slice(0, 3).map((line, lineIndex) => <p key={lineIndex} className="mt-1 text-[13px] leading-6">{line}</p>)}</div>
     </li>)}</ol>
   </div>;
 }
 function Assessment({ state }: { state?: RoleState }) {
   const trace = state?.trace;
-  return <section className="panel assessment"><SectionHeading eyebrow="SPECIALIST ASSESSMENT · BASIS FOR REVIEW" title="Specialist assessment" aside={<Sparkles size={20} />} />
+  return <section className="panel assessment"><SectionHeading eyebrow="QUESTION → INFORMATION → FINDING → CONCLUSION" title="Full specialist assessment" aside={<Sparkles size={20} />} />
+    <p className="mb-5 text-sm leading-7 text-cp-text-muted">This public assessment explains the clinical basis for the position without exposing private model deliberation.</p>
     {state?.error && <div role="alert" className="alert">{state.error}</div>}
-    <div className="assessment-current rounded-r-xl border-l-2 border-[var(--cp-role,var(--cp-accent))] bg-cp-bg-elevated p-4 [&_h3]:mt-2 [&_h3]:font-medium [&_h3]:leading-7"><span className="eyebrow">CURRENT ASSESSMENT</span><h3>{clinicalText(trace?.assessment ?? '', 'Waiting for specialist review.')}</h3></div>
-    {trace?.hypothesis && <div className="hypothesis mt-5 flex items-start gap-3 [&>svg]:mt-1 [&>svg]:text-cp-accent [&_h4]:mt-0 [&_p]:text-xs [&_p]:leading-7 [&_p]:text-cp-text-muted"><Focus size={18} /><div><h4>Working hypothesis</h4><p>{clinicalText(trace.hypothesis)}</p></div></div>}
-    {clinicalItems(trace?.observations ?? []).length > 0 && <><h4>Clinical observations</h4><BulletList items={clinicalItems(trace!.observations)} checked /></>}
-    {(trace?.uncertainties.length ?? 0) > 0 && <div className="uncertainty mt-4 rounded-r-lg border-l-2 border-cp-warning bg-cp-bg-elevated px-4 pb-3 pt-1"><h4>What remains uncertain</h4><BulletList items={trace!.uncertainties} /></div>}
-    {(trace?.evidence_checking.length ?? 0) > 0 && <><h4>Evidence being checked</h4><BulletList items={trace!.evidence_checking} /></>}
-    {trace?.next_action && <div className="next-action mt-5 flex gap-3 rounded-xl bg-cp-surface-soft p-4 [&>svg]:mt-1 [&>svg]:text-cp-accent [&_p]:mt-1 [&_p]:text-xs [&_p]:leading-7"><ArrowRight size={17} /><div><span className="eyebrow">NEXT CLINICAL QUESTION</span><p>{clinicalText(trace.next_action, 'Continue reviewing the unresolved clinical questions.')}</p></div></div>}
+    {trace?.hypothesis && <div className="hypothesis mt-5 flex items-start gap-3 [&>svg]:mt-1 [&>svg]:text-cp-accent [&_h4]:mt-0 [&_p]:text-xs [&_p]:leading-7 [&_p]:text-cp-text-muted"><Focus size={18} /><div><h4>Question considered</h4><p>{clinicalText(trace.hypothesis)}</p></div></div>}
+    {(trace?.evidence_checking.length ?? 0) > 0 && <><h4>Information considered</h4><BulletList items={trace!.evidence_checking} /></>}
+    {clinicalItems(trace?.observations ?? []).length > 0 && <><h4>What that information showed</h4><BulletList items={clinicalItems(trace!.observations)} checked /></>}
+    {(trace?.uncertainties.length ?? 0) > 0 && <div className="uncertainty mt-4 rounded-r-lg border-l-2 border-cp-warning bg-cp-bg-elevated px-4 pb-3 pt-1"><h4>Uncertainty retained</h4><BulletList items={trace!.uncertainties} /></div>}
+    <div className="assessment-current mt-5 rounded-r-xl border-l-2 border-[var(--cp-role,var(--cp-accent))] bg-cp-bg-elevated p-4 [&_h3]:mt-2 [&_h3]:font-medium [&_h3]:leading-7"><span className="eyebrow">CURRENT CONCLUSION</span><h3>{clinicalText(trace?.assessment ?? '', 'Waiting for specialist review.')}</h3></div>
+    {trace?.next_action && <div className="next-action mt-5 flex gap-3 rounded-xl bg-cp-surface-soft p-4 [&>svg]:mt-1 [&>svg]:text-cp-accent [&_p]:mt-1 [&_p]:text-xs [&_p]:leading-7"><ArrowRight size={17} /><div><span className="eyebrow">WHAT HAPPENS NEXT</span><p>{clinicalText(trace.next_action, 'Continue reviewing the unresolved clinical questions.')}</p></div></div>}
   </section>;
 }
 export function ActivityStream({ activity, role }: { activity: Data[]; role?: Role }) {

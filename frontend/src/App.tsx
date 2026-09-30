@@ -14,7 +14,7 @@ import { ROLE_LAYOUTS } from './roleLayouts';
 import { CaseSelection } from './CaseSelection';
 import { clinicalCaseKind } from './caseProfiles';
 import { documentStatus, Outcome, OutcomeBanner } from './Outcome';
-import { HOSPITAL, PatientBanner, Workstation } from './HospitalChrome';
+import { HOSPITAL, PatientBanner, RoleCaseSummary, Workstation } from './HospitalChrome';
 import { SimilarCases } from './SimilarCases';
 
 type Drafts = Partial<Record<Role, string>>;
@@ -27,7 +27,7 @@ export default function App() {
   const [workspace, setWorkspace] = useState<Workspace>('cases');
   const [selectedCase, setSelectedCase] = useState('');
   const [showPlan, setShowPlan] = useState(false);
-  const [mode, setMode] = useState<Mode>('rehearsal');
+  const [mode, setMode] = useState<Mode>('azure');
   const modeInitialized = useRef(false);
   const [evidence, setEvidence] = useState<EvidenceSelection | null>(null);
   const [showCase, setShowCase] = useState(false);
@@ -49,7 +49,8 @@ export default function App() {
   useEffect(() => {
     if (modeInitialized.current || api.loading || !config?.modes.length) return;
     modeInitialized.current = true;
-    const initialMode = meeting?.mode ?? 'rehearsal';
+    const initialMode = meeting?.mode
+      ?? (config.modes.includes(config.default_mode) ? config.default_mode : config.modes[0]);
     setMode(config.modes.includes(initialMode) ? initialMode : config.modes[0]);
   }, [api.loading, config, meeting?.mode]);
   const meetingId = meeting?.id;
@@ -130,8 +131,9 @@ export default function App() {
         {meeting?.error && <div className="alert" role="alert"><Flag size={18} /><span>{meeting.error}</span><button className="button secondary" disabled={pending || meeting.busy} onClick={() => void api.mutate('retry', {})}><RefreshCw size={15} />Retry specialist review</button></div>}
         {api.connection === 'reconnecting' && <div className="reconnect-notice mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-cp-warning bg-cp-surface p-4 text-sm" role="status"><RefreshCw size={15} />Connection interrupted. Reconnecting to the same meeting; your input is preserved.<button className="text-button" onClick={api.reconnect}>Reconnect now</button></div>}
         {workspace === 'cases' ? <CaseSelection cases={api.cases} selected={selectedCase} select={setSelectedCase} meeting={meeting} loading={api.loading} canStart={Boolean(selectedCase && config?.modes.length) && !pending && !api.loading && !meeting?.busy} mode={mode} start={() => void start()} resume={() => selectWorkspace('central')} clearRoom={() => void api.clearRoom()} pending={pending} /> : !meeting ? (isRole ? <RoleStandby role={workspace as Role} mode={mode} /> : <Welcome loading={api.loading} canStart={!api.loading} start={() => selectWorkspace('cases')} mode={mode} />) : <>
-          <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_260px]">
+          <div className={`grid items-start gap-5 ${isRole ? '' : 'xl:grid-cols-[minmax(0,1fr)_260px]'}`}>
           <div className="min-w-0">
+          {isRole && <RoleCaseSummary meeting={meeting} showCase={() => setShowCase(true)} />}
           {!isRole && <PhaseRail meeting={meeting} compact />}
           {workspace === 'central' && <>
             <OutcomeBanner meeting={meeting} open={() => selectWorkspace('outcome')} />
@@ -151,7 +153,7 @@ export default function App() {
           {workspace === 'wall' && <><div className="section-heading mb-5 flex items-center justify-between gap-4 [&_.eyebrow]:mb-1 [&>svg]:text-[var(--cp-role,var(--cp-accent))]"><div><p className="eyebrow">ONE CASE · SEVEN INDEPENDENT WORKSPACES</p><h1>Specialty workspaces</h1></div><Badge pulse={meeting.busy} tone="accent">{meeting.busy ? 'Reviews in progress' : `${openQuestions} open questions`}</Badge></div><div className="wall-grid mb-6 grid gap-4 md:grid-cols-2 2xl:grid-cols-3">{ROLES.map(role => <RoleCard key={role} role={role} meeting={meeting} open={() => selectWorkspace(role)} expanded />)}</div><FrictionPanel meeting={meeting} pending={pending} followup={() => void api.mutate('followup', {})} />{meeting.plan && <PlanPanel meeting={meeting} role={activeRole} setRole={setReviewRole} comment={comments[activeRole] ?? ''} setComment={value => setComments(current => ({ ...current, [activeRole]: value }))} pending={pending} mutate={api.mutate} inspect={setEvidence} />}</>}
           {isRole && <Specialist role={workspace as Role} meeting={meeting} pending={pending} guidance={drafts[workspace as Role] ?? ''} setGuidance={value => setDrafts(current => ({ ...current, [workspace]: value }))} steer={steer} mutate={api.mutate} inspect={setEvidence} review={meeting.plan && <PlanPanel compact showPlan={() => setShowPlan(true)} meeting={meeting} role={workspace as Role} comment={comments[workspace as Role] ?? ''} setComment={value => setComments(current => ({ ...current, [workspace]: value }))} pending={pending} mutate={api.mutate} inspect={setEvidence} />} />}
           </div>
-          <aside data-testid="case-rail" aria-label="Case snapshot" className="min-w-0 xl:sticky xl:top-4"><CaseHeader meeting={meeting} showCase={() => setShowCase(true)} compact /></aside>
+          {!isRole && <aside data-testid="case-rail" aria-label="Case snapshot" className="min-w-0 xl:sticky xl:top-4"><CaseHeader meeting={meeting} showCase={() => setShowCase(true)} compact /></aside>}
           </div>
           <footer className="meeting-footer flex flex-wrap items-center justify-between gap-3 py-6 text-[10px] text-cp-text-muted"><span className="row flex items-center gap-2"><span className="status-dot inline-block size-1.5 shrink-0 rounded-full bg-cp-success" />{meeting.closed_at ? `Decision captured ${time(meeting.closed_at)}` : 'Live shared state · changes recorded with provenance'}</span><span className="mono font-mono text-[10px] tracking-wide">ROUND {String(meeting.round).padStart(2, '0')} / {meeting.id.slice(0, 8)}</span>{readyForAction && <button className="text-button" onClick={() => selectWorkspace('chair')}>Chair controls <ArrowRight size={13} /></button>}</footer>
         </>}

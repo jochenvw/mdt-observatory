@@ -30,8 +30,16 @@ VERSION = "1.0.0"
 MAX_COMMAND_BYTES = 16384
 
 
+def azure_mode_available() -> bool:
+    return bool(os.getenv("AZURE_OPENAI_ENDPOINT") and os.getenv("AZURE_OPENAI_DEPLOYMENT"))
+
+
+def default_execution_mode() -> Literal["rehearsal", "azure"]:
+    return "azure" if azure_mode_available() else "rehearsal"
+
+
 class Start(Contract):
-    mode: Literal["rehearsal", "azure"] = "rehearsal"
+    mode: Literal["rehearsal", "azure"] | None = None
     case_id: str | None = Field(default=None, min_length=1, max_length=100)
 
 
@@ -254,10 +262,11 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     @application.get("/api/config")
     async def configuration() -> dict[str, object]:
         modes = ["rehearsal"]
-        if os.getenv("AZURE_OPENAI_ENDPOINT") and os.getenv("AZURE_OPENAI_DEPLOYMENT"):
+        if azure_mode_available():
             modes.append("azure")
         return {
             "modes": modes,
+            "default_mode": default_execution_mode(),
             "auth_required": bool(config.presenter_token),
             "version": VERSION,
             "disclaimer": "DEMONSTRATION SYSTEM. NOT FOR CLINICAL USE.",
@@ -367,11 +376,10 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
 
     @application.post("/api/meetings", dependencies=protected, status_code=201)
     async def start(body: Start, service: EngineDep) -> Meeting:
-        if body.mode == "azure" and not (
-            os.getenv("AZURE_OPENAI_ENDPOINT") and os.getenv("AZURE_OPENAI_DEPLOYMENT")
-        ):
+        mode = body.mode or default_execution_mode()
+        if mode == "azure" and not azure_mode_available():
             raise HTTPException(422, "Azure mode requires endpoint and deployment configuration.")
-        return await service.start(body.mode, body.case_id)
+        return await service.start(mode, body.case_id)
 
     @application.get("/api/meetings/{meeting_id}", dependencies=protected)
     async def meeting(meeting_id: str, service: EngineDep) -> Meeting:

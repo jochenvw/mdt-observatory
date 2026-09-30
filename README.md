@@ -28,8 +28,10 @@ Set-Location ..
 uv run --frozen uvicorn mdt.app:app --host 127.0.0.1 --port 8000
 ```
 
-Open <http://127.0.0.1:8000>. The default **Scripted demonstration** (`rehearsal`) is deterministic,
-uses curated tools, needs no Azure credentials and never claims to be live AI.
+Open <http://127.0.0.1:8000>. When Azure OpenAI is configured, the default is
+**Live AI review** (`azure`). The deterministic **Scripted demonstration**
+(`rehearsal`) remains selectable, uses curated tools, needs no Azure credentials
+and never claims to be live AI.
 Start a case, investigate friction, steer radiology, request targeted follow-up,
 and explicitly concur from roles that require human review.
 

@@ -45,12 +45,14 @@ diagnosis, stage, performance status and spoken language on every meeting screen
 The banner reads only fields in the case record, never invents demographics or
 allergies, and labels the record fictional.
 
-Specialty screens put the role identity, attention cue, public assessment,
-newest-first activity and human controls in the center. A sticky desktop case
-rail keeps terse case facts and full-record access on the right. Full specialty
-source workspaces and saved preferences remain expandable; full assessments and
-proposal conditions open in inspection drawers. The same version-bound review
-form is reused by the specialist, central and chair desks.
+Specialty screens put a four-part case briefing at the top of the main canvas:
+patient, current situation, work already completed and the question to resolve.
+Role identity, attention cue, public assessment, newest-first activity and human
+controls follow beneath it. Shared and chair screens retain a sticky desktop case
+rail on the right. Full specialty source workspaces and saved preferences remain
+expandable; full assessments and proposal conditions open in inspection drawers.
+The same version-bound review form is reused by the specialist, central and chair
+desks.
 
 Each role retains its own canvas, header, icon and source-record layout.
 The desktop navigator stays available while scrolling; switching workspaces

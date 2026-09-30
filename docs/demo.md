@@ -42,22 +42,27 @@ uses its own full record, specialist contexts, evidence and review conditions.
 Starting another case replaces the active room, not historical saved records.
 The walkthrough below describes the original case.
 
-Switching roles returns to a live desk: role identity and attention state above,
-newest-first review activity and human controls in the center, and a terse case
-snapshot on the right. **View case record** opens the complete dossier.
-**Read full assessment and uncertainties** exposes the public assessment;
+Switching roles returns to a live desk: a case briefing at the top states the
+patient, current situation, work already completed and question to resolve.
+The agent review then narrates its public decision path as question considered,
+information checked, finding, retained uncertainty, current conclusion and next
+action. Role identity, attention state, newest-first activity and human controls
+remain in the center. **View case record** opens the complete dossier.
+**Full assessment** exposes the expanded public assessment;
 **Read proposal, conditions and evidence** opens the full proposal before review.
 Detailed specialty source workspaces and saved preferences expand on demand.
 During concurrence, the review form leads; guidance remains expandable below it.
 
 **When the human must intervene.** A question the agent cannot settle from the
-record, such as the imaging question on the radiology workspace, shows **Your
-input is needed** on that workspace and in its sidebar entry. The reply panel
-(**Your agent is asking you**) quotes the question in the agent's voice and lists
-what it needs checked. The human specialist answers with what they reviewed and
-found; **Use example reply** fills in a demonstration report. General approval
+record, such as the imaging question on the radiology workspace, shows **MDT
+waiting for human input** in the attention state and a prominent **Human finding
+required · MDT blocked** handoff. It names the specialist the meeting is waiting
+for, the question and checks the next step hinges on, and the sequence that the
+finding unlocks. **Enter the finding** moves focus to the highlighted response
+box labelled **Enter what you reviewed and found**. The human specialist reports
+the reviewed source and finding; **Use example reply** fills in a demonstration report. General approval
 ("go ahead") names nothing reviewed, so the question stays open and the panel
-says why. After a valid reply the workspace shows **Question answered** and the
+says why and remains visibly blocked. After a valid reply the workspace shows **Question answered** and the
 next step: the chair runs the focused follow-up round, then proposes a plan.
 Specialties whose question closes in that follow-up round show **Waiting for the
 chair** instead of asking for input.

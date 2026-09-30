@@ -27,13 +27,13 @@ describe('clinical attention cues', () => {
     const state = meeting();
     state.phase = 'TARGETED_DISCUSSION';
     state.frictions = [{ id: 'imaging', question: 'Review all sites', roles: ['radiology'], missing: [], blocking: true, resolved: false, resolution: null }];
-    expect(roleAttention(state, 'radiology').title).toBe('Your input is needed');
+    expect(roleAttention(state, 'radiology')).toMatchObject({ title: 'MDT waiting for human input', tone: 'warning' });
     state.roles.radiology = {
       role: 'radiology', label: 'Radiology', status: 'DONE', context: {}, position: null,
       trace: { assessment: '', observations: [], hypothesis: '', uncertainties: [], evidence_checking: [], next_action: '' },
       activity: [], guidance: ['Go ahead'], revision: 2, error: null,
     };
-    expect(roleAttention(state, 'radiology')).toMatchObject({ title: 'Question still open', tone: 'warning' });
+    expect(roleAttention(state, 'radiology')).toMatchObject({ title: 'Human finding still required', tone: 'warning' });
     state.frictions.push({ id: 'applicability', question: 'Is the evidence applicable?', roles: ['research'], missing: [], blocking: true, resolved: false, resolution: null });
     expect(roleAttention(state, 'research').title).toBe('Waiting for the chair');
     expect(state.frictions[0].resolved).toBe(false);

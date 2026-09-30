@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { PatientBanner, Workstation, workstationLabel } from './HospitalChrome';
+import { PatientBanner, RoleCaseSummary, Workstation, workstationLabel } from './HospitalChrome';
 import { ROLES } from './types';
 import type { Meeting } from './types';
 
@@ -40,5 +40,25 @@ describe('hospital chrome', () => {
     expect(markup).toContain('M · 58 y');
     expect(markup).not.toMatch(/Diagnosis|Stage|Performance/);
     expect(markup).toContain('English');
+  });
+
+  it('puts the case briefing and decision question at the top of role workspaces', () => {
+    const markup = renderToStaticMarkup(<RoleCaseSummary showCase={() => {}} meeting={meeting({
+      id: 'CASE-X', pseudonym: 'CRC-2026-002', patient: '58-year-old man', age: 58,
+      diagnosis: 'Metastatic colorectal cancer', stage: 'Liver-limited disease',
+      performance_status: 'ECOG 1', treatment: 'Four cycles of systemic treatment',
+      previous_treatment: 'Baseline imaging and biopsy completed',
+      question: 'Proceed to local treatment now or continue systemic treatment?',
+    })} />);
+    expect(markup).toContain('data-testid="role-case-summary"');
+    expect(markup).toContain('Patient');
+    expect(markup).toContain('Current situation');
+    expect(markup).toContain('What has been done');
+    expect(markup).toContain('Question to resolve');
+    expect(markup).toContain('Metastatic colorectal cancer');
+    expect(markup).toContain('Four cycles of systemic treatment');
+    expect(markup).toContain('Baseline imaging and biopsy completed');
+    expect(markup).toContain('Proceed to local treatment now or continue systemic treatment?');
+    expect(markup).toContain('View case record');
   });
 });

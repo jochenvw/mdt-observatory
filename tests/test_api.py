@@ -219,8 +219,24 @@ def test_azure_not_silently_enabled_without_config(tmp_path: Path, monkeypatch: 
     monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
     monkeypatch.delenv("AZURE_OPENAI_DEPLOYMENT", raising=False)
     with TestClient(create_app(Settings(db_path=str(tmp_path / "api.db")))) as client:
-        assert client.get("/api/config").json()["modes"] == ["rehearsal"]
+        configuration = client.get("/api/config").json()
+        assert configuration["modes"] == ["rehearsal"]
+        assert configuration["default_mode"] == "rehearsal"
         assert client.post("/api/meetings", json={"mode": "azure"}).status_code == 422
+
+
+def test_azure_is_default_when_model_configuration_is_available(
+    tmp_path: Path, monkeypatch: object,
+) -> None:
+    import pytest
+
+    assert isinstance(monkeypatch, pytest.MonkeyPatch)
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com")
+    monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT", "test-deployment")
+    with TestClient(create_app(Settings(db_path=str(tmp_path / "api.db")))) as client:
+        configuration = client.get("/api/config").json()
+        assert configuration["modes"] == ["rehearsal", "azure"]
+        assert configuration["default_mode"] == "azure"
 
 def room_view(client: TestClient) -> dict[str, Any] | None:
     """The snapshot the room channel delivers to every open participant screen."""

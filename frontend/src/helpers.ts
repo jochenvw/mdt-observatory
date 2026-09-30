@@ -59,8 +59,8 @@ export function roleAttention(meeting: Meeting, role: Role): { title: string; de
   const questions = meeting.frictions.filter(item => !item.resolved && item.roles.includes(role));
   const awaitingHuman = questions.filter(item => needsHumanReply(item, role));
   if (awaitingHuman.length) {
-    if (state?.guidance.length) return cue('Question still open', 'Your last reply did not say what you reviewed, so your agent kept the question open rather than assume an answer.', 'warning');
-    return cue('Your input is needed', 'Your agent has a question it cannot answer from the record alone. Reply in the panel below.', 'warning');
+    if (state?.guidance.length) return cue('Human finding still required', 'The MDT is still waiting for this specialist to report what they reviewed and found. Enter the finding in the highlighted response box.', 'warning');
+    return cue('MDT waiting for human input', 'This case cannot advance until this specialist records what they reviewed and found in the highlighted response box.', 'warning');
   }
   if (questions.length) return cue('Waiting for the chair', 'An open question involves this specialty. Your agent answers it in the chair’s focused follow-up round; you may add an instruction.', 'accent');
   if (state?.guidance.length && meeting.phase === 'TARGETED_DISCUSSION' && meeting.frictions.some(item => !item.resolved)) return cue('Question answered', 'Your reply closed this specialty’s question. Next, the chair runs a focused follow-up on the remaining open questions, then proposes a plan for review.', 'success');

@@ -183,4 +183,4 @@ export interface Meeting {
   closed_at: string | null;
   communications?: Partial<Record<Audience, Communication>>;
 }
-export interface Config { modes: Mode[]; auth_required: boolean; version: string }
+export interface Config { modes: Mode[]; default_mode: Mode; auth_required: boolean; version: string }

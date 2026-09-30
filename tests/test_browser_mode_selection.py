@@ -75,7 +75,8 @@ def test_explicit_mode_survives_late_initial_snapshot_and_start_payload(chosen, 
             if path == "/api/config":
                 return route.fulfill(
                     json={
-                        "modes": ["rehearsal", "azure"], "auth_required": False, "version": "test"
+                        "modes": ["rehearsal", "azure"], "default_mode": "azure",
+                        "auth_required": False, "version": "test"
                     }
                 )
             if path == "/api/meeting":
@@ -131,7 +132,8 @@ def test_active_mode_initializes_once_and_explicit_choice_survives_reconnect():
             if path == "/api/config":
                 return route.fulfill(
                     json={
-                        "modes": ["rehearsal", "azure"], "auth_required": False, "version": "test"
+                        "modes": ["rehearsal", "azure"], "default_mode": "azure",
+                        "auth_required": False, "version": "test"
                     }
                 )
             if path == "/api/meeting" or path == "/api/meetings/historical-meeting":
@@ -170,4 +172,43 @@ def test_active_mode_initializes_once_and_explicit_choice_survives_reconnect():
         assert starts == [{"mode": "rehearsal", "case_id": "CASE-CURRENT"}]
         expect(selector).to_have_value("rehearsal")
         assert not errors
+        browser.close()
+
+
+def test_new_room_defaults_to_live_ai_mode():
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.add_init_script(EVENT_SOURCE)
+        starts = []
+
+        def route_handler(route):
+            path = route.request.url.split("http://mdt.test", 1)[-1].split("?", 1)[0]
+            if path == "/api/config":
+                return route.fulfill(json={
+                    "modes": ["rehearsal", "azure"], "default_mode": "azure",
+                    "auth_required": False, "version": "test",
+                })
+            if path == "/api/meeting":
+                return route.fulfill(body="null", content_type="application/json")
+            if path == "/api/cases":
+                return route.fulfill(json=CATALOG)
+            if path == "/api/meetings":
+                starts.append(route.request.post_data_json)
+                return route.fulfill(json=snapshot("azure", "new-meeting"))
+            if path.startswith("/api/"):
+                return route.fulfill(status=405)
+            asset = DIST / path.lstrip("/") if path.startswith("/assets/") else DIST / "index.html"
+            return route.fulfill(
+                body=asset.read_bytes(),
+                content_type=mimetypes.guess_type(str(asset))[0] or "application/octet-stream",
+            )
+
+        page.route("**/*", route_handler)
+        page.goto("http://mdt.test/")
+        expect(page.get_by_test_id("mode-select")).to_have_value("azure")
+        expect(page.get_by_test_id("start-case")).to_be_enabled()
+        page.get_by_test_id("start-case").click()
+        expect(page.get_by_test_id("choose-case")).to_be_enabled()
+        assert starts == [{"mode": "azure", "case_id": "CASE-CURRENT"}]
         browser.close()

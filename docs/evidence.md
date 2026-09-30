@@ -252,7 +252,9 @@ SDK retries remain disabled; the bounded two-retry 429 loop honors server cooldo
 up to 60 seconds, shares pacing and fails explicitly on malformed/excessive delays.
 Clients and credentials close through the existing exit stack.
 
-Activity presents clinician-readable assessment summaries, not hidden reasoning.
+Activity presents a clinician-readable decision path: question, information
+considered, finding, retained uncertainty, current conclusion and next action.
+This is a public assessment summary, not hidden model reasoning.
 Telemetry and audit exports retain bounded deployment/request/response/token metadata,
 not credentials, prompts, patient passages or guidance. Existing historic live-verification
 artifacts describe the previous case, not proof of live execution for this CRC package.

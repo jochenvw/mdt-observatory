@@ -202,6 +202,12 @@ def test_browser_full_demo_repeatability_and_mobile(server: str) -> None:
         expect(page.get_by_text("Radiology", exact=True).first).to_be_visible()
         navigate(page, "Radiology")
         expect(page.locator("svg").first).to_be_visible()
+        required = page.get_by_test_id("human-action-required")
+        expect(required).to_be_visible()
+        expect(required).to_contain_text("The MDT is waiting for the radiologist")
+        expect(required).to_contain_text("The next MDT step hinges on")
+        page.get_by_test_id("go-to-human-reply").click()
+        expect(page.get_by_test_id("guidance-input")).to_be_focused()
         question = page.get_by_test_id("agent-question")
         expect(question).to_contain_text("I cannot settle this from the record alone")
         expect(question).to_contain_text("Can all nine original liver sites")
@@ -229,9 +235,11 @@ def test_browser_full_demo_repeatability_and_mobile(server: str) -> None:
         for role in proposed["roles"]:
             if role not in state(page)["concurrences"]:
                 navigate(page, "Patient perspective" if role == "patient" else role.capitalize())
-                expect(page.get_by_role("button", name="Concur", exact=True)).to_be_in_viewport()
+                concur = page.get_by_role("button", name="Concur", exact=True)
+                concur.scroll_into_view_if_needed()
+                expect(concur).to_be_in_viewport()
                 click_command(
-                    page, page.get_by_role("button", name="Concur", exact=True), "/concur"
+                    page, concur, "/concur"
                 )
         final = state(page)
         assert final["phase"] == "DECISION_CAPTURED"
@@ -395,18 +403,29 @@ def test_specialty_layouts_themes_and_clinical_presentation(server: str) -> None
                 expect(page.locator("main")).to_have_attribute("data-specialty", role)
                 identity = page.get_by_test_id(f"role-identity-{role}")
                 expect(identity.get_by_role("heading", level=1)).to_be_in_viewport()
-                expect(page.get_by_test_id("specialty-case-summary")).to_be_visible()
+                summary = page.get_by_test_id("role-case-summary")
+                expect(summary).to_be_visible()
                 expect(page.get_by_test_id(f"view-{role}")).to_have_attribute(
                     "aria-current", "page"
                 )
                 desk = page.get_by_test_id("activity-desk")
                 desk_box = desk.bounding_box()
-                rail_box = page.get_by_test_id("case-rail").bounding_box()
-                assert desk_box and desk_box["y"] < 530, f"{role}/{theme}: activity starts too low"
-                assert rail_box and rail_box["x"] > desk_box["x"] + desk_box["width"]
-                expect(page.get_by_test_id("send-guidance")).to_be_in_viewport()
+                summary_box = summary.bounding_box()
+                identity_box = identity.bounding_box()
+                blocker = page.get_by_test_id("human-action-required")
+                if blocker.count():
+                    blocker_box = blocker.bounding_box()
+                    assert blocker_box and desk_box and blocker_box["y"] < desk_box["y"]
+                    assert desk_box["y"] < 1200, f"{role}/{theme}: blocking handoff is too tall"
+                else:
+                    assert desk_box and desk_box["y"] < 760, (
+                        f"{role}/{theme}: activity starts too low"
+                    )
+                assert summary_box and identity_box and summary_box["y"] < identity_box["y"]
+                assert page.get_by_test_id("case-rail").count() == 0
+                expect(page.get_by_test_id("send-guidance")).to_be_visible()
                 expect(page.get_by_test_id("role-attention")).to_be_in_viewport()
-                expect(page.get_by_test_id("view-case-record")).to_be_in_viewport()
+                expect(page.get_by_test_id("view-role-case-record")).to_be_in_viewport()
                 ids = workspace.locator("[data-activity-id]").evaluate_all(
                     "nodes => nodes.map(node => Number(node.dataset.activityId))"
                 )
@@ -632,7 +651,10 @@ def test_participant_screens_follow_the_orchestrator_across_cases(server: str) -
             # Each screen shows its own specialty's reasoning, not a shared script.
             steps = screen.get_by_test_id("reasoning-steps")
             expect(steps).to_be_visible()
-            expect(steps).to_contain_text("HOW THIS SPECIALTY REACHED ITS POSITION")
+            expect(steps).to_contain_text("How the agent moved from question to conclusion")
+            expect(steps).to_contain_text("Trying to answer")
+            expect(steps).to_contain_text("Considered")
+            expect(steps).to_contain_text("So the current conclusion is")
             assert screen.locator("main").get_attribute("data-specialty") == key
 
         traces = {

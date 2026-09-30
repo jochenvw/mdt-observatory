@@ -1,6 +1,34 @@
 # MDT Observatory deployment plan
 
-Status: Deployed - live research search release live. Image
+Status: Validated - clinician-guidance and live-default release awaiting build/release.
+
+## Section 7: Validation Proof - clinician-guidance and live-default release (2026-09-30)
+
+Scope: working tree based on `777df62`. Adds a reusable design-language guide, defaults
+new cases to live Azure AI when model configuration is available, moves the four-part
+case briefing to the top of specialty workspaces, presents a curated public assessment
+as question / evidence / finding / uncertainty / conclusion / next action, and makes
+human-only blockers and their response field explicit. Rehearsal remains selectable
+and is the fallback without Azure model configuration. No infra, dependency, RBAC,
+storage, network, persistence or identity changes.
+
+| Command | Result |
+| --- | --- |
+| `uv lock --check` / `uv run --frozen ruff check .` / `uv run --frozen mypy` | Pass / pass / pass |
+| `MDT_BROWSER_TESTS=1 uv run --frozen pytest` | 343 passed |
+| `npm test -- --run` / `npm run build` | 166 passed / built |
+| `az bicep build --file infra/main.bicep` | Compiled clean |
+| `az deployment sub validate` | Succeeded in approved subscription `e3825c9a-4bce-43e1-899e-1610156c9383`, `westeurope` |
+| `az deployment sub what-if --result-format ResourceIdOnly` | Completed against the current immutable image with no deletions |
+| Live role review | Existing identity retains only AcrPull, container-scoped Storage Blob Data Contributor and Cognitive Services OpenAI User |
+
+Validation used the existing Container App presenter secret only in memory; it was
+not printed or persisted. The approved staged release remains mandatory: build a
+fresh immutable image, repeat exact-image validation and what-if, then use the
+drain-aware release stage and verify one active revision/replica, private Blob gates,
+health/readiness, live-mode configuration and the served UI.
+
+Previous status: Deployed - live research search release live. Image
 `acrmdtgy76frdpub6io.azurecr.io/mdt-observatory@sha256:c268c8ce599156c1d368dd3c6bf0ad3eee44177ee023c392a6d307f29d0c35d0`,
 revision `mdt-observatory-vnet--r20260924143617-581d80` at 100% traffic, one healthy replica, `/healthz` 200,
 `/api/config` 1.0.0, bundle serves Research operations. In-container `httpx2` egress check with the app User-Agent:
