@@ -123,7 +123,7 @@ Operational errors do not appear as the next clinical question.
 | 1:05 | Concur from the roles awaiting human review | Version-bound human sign-offs arrive centrally |
 | 1:15 | Open the captured decision and export | Complete provenance, evidence and human contributions |
 | 1:20 | Click **Open outcome &amp; letters** on the consensus banner | "Consensus reached", the numbered plan forward, retained conditions and who signed off (clinician versus demonstration policy) |
-| 1:25 | Open the patient summary, then the colleague letter | A gentle plain-language summary in the patient's language with a glossary; an English clinician-to-clinician letter with tables |
+| 1:25 | Open the patient summary, then the letter to the accountable medical doctor | A gentle plain-language summary in the patient's language with a glossary; an English clinician-to-clinician letter with tables |
 | 1:30 | Enter a reviewer name; Approve, or Request changes with a comment | Named, version-bound approval; a change request redrafts the document and revokes earlier approval |
 
 Alternate ending: object to a proposal with a substantive concern. The chair

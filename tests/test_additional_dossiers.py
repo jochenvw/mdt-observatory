@@ -142,14 +142,21 @@ def test_runtime_fields_remain_typed_and_conditional(name: str) -> None:
                 assert isinstance(value, str) and value
     for key in ("applicability_condition", "protocol_condition", "hypothesis"):
         assert isinstance(runtime[key], str) and runtime[key]
-    for key in ("residual_conditions", "imaging_review_terms"):
+    for key in ("residual_conditions", "imaging_conditions", "imaging_review_terms"):
         assert isinstance(runtime[key], list) and runtime[key]
         assert all(isinstance(item, str) and item for item in runtime[key])
     assert set(runtime["frictions"]) == {"imaging", "applicability"}
     for friction in runtime["frictions"].values():
         assert isinstance(friction["question"], str) and friction["question"]
         assert friction["missing"] and all(isinstance(item, str) for item in friction["missing"])
-    assert set(runtime["proposal"]) == {"title", "summary", "conditions"}
+    assert set(runtime["proposal"]) == {
+        "direction", "title", "decision", "summary", "conditions",
+    }
+    assert runtime["proposal"]["direction"] in {
+        "INVESTIGATE_FURTHER", "PROCEED_TREATMENT",
+    }
+    assert isinstance(runtime["proposal"]["decision"], str)
+    assert runtime["proposal"]["decision"]
     assert runtime["proposal"]["conditions"] == runtime["residual_conditions"]
     assert "conditional" in runtime["proposal"]["summary"].lower()
     assert "human" in runtime["frictions"]["imaging"]["question"].lower()

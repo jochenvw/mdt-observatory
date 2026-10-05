@@ -12,7 +12,7 @@ from mdt.communications import (
     PATIENT_SECTIONS,
     CommunicationInput,
     CommunicationRuntimeError,
-    DraftGpAction,
+    DraftAccountableDoctorAction,
     DraftResult,
     DraftSection,
     DraftStatement,
@@ -62,13 +62,17 @@ class FakeDrafter:
 def fake_result(inputs: CommunicationInput) -> DraftResult:
     actions = [f"plan.action.{index}" for index in range(len(inputs.plan.actions))]
     conditions = [f"plan.condition.{index}" for index in range(len(inputs.plan.conditions))]
+    resolved = [
+        f"plan.resolved_requirement.{index}"
+        for index in range(len(inputs.plan.resolved_requirements))
+    ]
     if inputs.audience == "patient":
         sections = [
             DraftSection(
                 id=identifier, heading=heading,
                 paragraphs=[f"The team talked about this part of your care. {hint}"],
                 source_refs=(
-                    actions if identifier == "recommendation"
+                    ["plan.decision", *resolved, *actions] if identifier == "recommendation"
                     else conditions if identifier == "less_sure" else ["plan.summary"]
                 ),
             )
@@ -85,15 +89,18 @@ def fake_result(inputs: CommunicationInput) -> DraftResult:
     return compose_letter(
         inputs,
         LetterDraft(
-            intent=DraftStatement(text="Conditional plan agreed.", source_refs=["plan.summary"]),
+            intent=DraftStatement(
+                text="Conditional plan agreed.",
+                source_refs=["plan.decision", *resolved, "plan.summary"],
+            ),
             discussion=[
                 DraftStatement(
                     text=f"Retained: {item.question}", source_refs=[f"friction.{item.id}"]
                 )
                 for item in inputs.frictions
             ],
-            gp_actions=[
-                DraftGpAction(
+            accountable_doctor_actions=[
+                DraftAccountableDoctorAction(
                     action="No action requested.", timing="Not applicable",
                     source_refs=actions[:1],
                 )

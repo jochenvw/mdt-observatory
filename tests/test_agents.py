@@ -10,7 +10,7 @@ import pytest
 from openai import AsyncOpenAI
 
 from mdt import agents
-from mdt.agents import AgentRuntimeError, RunState, analyze
+from mdt.agents import AgentRuntimeError, RunState, analyze, confirmed_imaging_review
 from mdt.case_registry import get_case
 from mdt.config import Settings
 from mdt.models import Position, Role
@@ -70,9 +70,14 @@ async def test_added_case_tools_prompts_grounding_and_safety(case_id: str, role:
     position.uncertainties = []
     position.trace.uncertainties = []
     safe = agents._safety_gates(position, state)
-    if role == Role.RADIOLOGY or role in agents.APPLICABILITY_ROLES:
-        assert set(runtime.residual_conditions) <= set(safe.uncertainties)
-        assert set(runtime.residual_conditions) <= set(safe.trace.uncertainties)
+    if role == Role.RADIOLOGY:
+        expected_conditions = set(runtime.residual_conditions)
+    elif role in agents.APPLICABILITY_ROLES:
+        expected_conditions = set(runtime.residual_conditions) - set(runtime.imaging_conditions)
+    else:
+        expected_conditions = set()
+    assert expected_conditions <= set(safe.uncertainties)
+    assert expected_conditions <= set(safe.trace.uncertainties)
     position.claims[0].evidence_ids = ["CASE-CRC-RADIOLOGY"]
     with pytest.raises(AgentRuntimeError, match="did not return"):
         agents._validate_grounding(position, state)
@@ -95,7 +100,13 @@ async def test_parallel_case_runs_and_catalog_copies_do_not_share_state() -> Non
             phase="followup", guidance=guidance, emit=_discard,
         )
         for identifier, guidance in (
-            (ADDED_CASE_IDS[0], ["Review liver mapping and vascular anatomy."]),
+            (
+                ADDED_CASE_IDS[0],
+                [
+                    "I reviewed the liver mapping and vascular anatomy. All baseline sites are "
+                    "mapped and the vessel interfaces and remnant are adequate."
+                ],
+            ),
             (ADDED_CASE_IDS[1], []),
             (str(CASE["id"]), []),
         )
@@ -352,11 +363,11 @@ async def test_initial_radiology_escalates_and_reports_actual_calculation() -> N
 @pytest.mark.parametrize(
     "guidance",
     [
-        "Review complete liver clearance.",
-        "Compare all nine sites against baseline liver mapping.",
-        "Review the IVC and MHV vascular margins.",
-        "Assess the lung nodule on thin-section chest CT.",
-        "Beoordeel de lever en vergelijk de vaatrelaties.",
+        "I reviewed the liver clearance and confirmed the mapped sites are acceptable.",
+        "I compared all nine sites against baseline; the liver mapping is complete and adequate.",
+        "I reviewed the IVC and MHV vascular margins and confirmed they are clear.",
+        "I assessed the lung nodule on thin-section chest CT; it is not suspicious.",
+        "Ik heb de lever en vaatrelaties beoordeeld; de mapping is volledig en voldoende.",
     ],
 )
 async def test_targeted_radiology_guidance_releases_only_blocking_question(guidance: str) -> None:
@@ -365,7 +376,11 @@ async def test_targeted_radiology_guidance_releases_only_blocking_question(guida
     assert result.autonomy == "REVIEW"
     assert result.human_intervention
     assert result.stance == "CONDITIONAL"
-    assert any("margin" in item for item in result.uncertainties)
+    runtime = get_case(CASE["id"]).runtime
+    assert not set(runtime.imaging_conditions) & set(result.uncertainties)
+    assert set(runtime.residual_conditions) - set(runtime.imaging_conditions) <= set(
+        result.uncertainties
+    )
 
 
 @pytest.mark.parametrize(
@@ -412,7 +427,15 @@ async def test_applicability_requires_a_followup_assessment_and_retains_conditio
 
 @pytest.mark.parametrize("role", [Role.RADIOLOGY, *agents.APPLICABILITY_ROLES])
 async def test_crc_residual_conditions_survive_model_omission_and_followup(role: Role) -> None:
-    state = RunState(role, CASE["id"], "followup", ["Review liver clearance and chest CT"])
+    state = RunState(
+        role,
+        CASE["id"],
+        "followup",
+        [
+            "I reviewed the liver clearance and chest CT. All sites are mapped, margins are "
+            "adequate and the lung nodule is not suspicious."
+        ],
+    )
     tool = (
         "compare_imaging" if role == Role.RADIOLOGY else f"assess_{role.value}_applicability"
     )
@@ -425,10 +448,12 @@ async def test_crc_residual_conditions_survive_model_omission_and_followup(role:
     assert result.autonomy == "REVIEW"
     assert result.stance == "CONDITIONAL"
     assert not result.friction_keys
-    assert set(get_case(CASE["id"]).runtime.residual_conditions) <= set(result.uncertainties)
-    assert set(get_case(CASE["id"]).runtime.residual_conditions) <= set(
-        result.trace.uncertainties
+    expected = (
+        set(get_case(CASE["id"]).runtime.residual_conditions)
+        - set(get_case(CASE["id"]).runtime.imaging_conditions)
     )
+    assert expected <= set(result.uncertainties)
+    assert expected <= set(result.trace.uncertainties)
 
 
 @pytest.mark.parametrize("role", list(Role))
@@ -479,7 +504,13 @@ async def test_grounding_rejects_invented_and_other_role_citations() -> None:
 async def test_concurrent_analysis_does_not_mutate_scenario_or_leak_guidance() -> None:
     before = json.dumps(ROLE_CONTEXTS, sort_keys=True)
     targeted, untouched = await asyncio.gather(
-        _run(Role.RADIOLOGY, phase="followup", guidance=["Review liver clearance"]),
+        _run(
+            Role.RADIOLOGY,
+            phase="followup",
+            guidance=[
+                "I reviewed the liver clearance. All sites are mapped and the margins are adequate."
+            ],
+        ),
         _run(Role.RADIOLOGY, phase="followup"),
     )
     assert targeted.friction_keys == []
@@ -1319,3 +1350,15 @@ async def test_azure_client_rebuilds_when_endpoint_or_key_changes(
     assert third is not second and second.is_closed()
     await agents.aclose_azure_clients()
     assert third.is_closed()
+
+
+def test_confirmed_imaging_review_traces_the_confirming_human_input() -> None:
+    terms = get_case(str(CASE["id"])).runtime.imaging_review_terms
+    confirmation = "I reviewed all nine liver sites; the mapping and margins are acceptable."
+    later_note = "Thanks, please continue with the meeting."
+    assert confirmed_imaging_review([confirmation, later_note], terms) == confirmation
+    assert confirmed_imaging_review([later_note], terms) is None
+    assert confirmed_imaging_review(
+        [confirmation, "I reviewed the liver sites again; the margins are not acceptable."],
+        terms,
+    ) is None

@@ -1,7 +1,7 @@
-# Skill: clinician-to-clinician MDT outcome letter
+# Skill: letter to the accountable medical doctor
 
 You are the MDT coordinator drafting the narrative parts of an outcome letter to the
-patient's GP or referring colleague. It should read like one medical professional
+patient's accountable medical doctor. It should read like one medical professional
 briefing another. This works for any case: rely only on the supplied `record`.
 
 The system inserts the record facts (diagnosis, treatment, conditions, action table,
@@ -11,9 +11,10 @@ evidence table, sign-off) verbatim. You write only:
   "Conditional; potentially curative-intent pathway subject to …".
 - `discussion`: two to four bullets of professional shorthand on the key points of
   disagreement, and whether each was resolved or retained.
-- `gp_actions`: only actions for the GP that the record directly supports, such as
+- `accountable_doctor_actions`: only actions for the accountable medical doctor that the
+  record directly supports, such as
   toxicity monitoring or safety-netting that is already documented, or information
-  the MDT needs from primary care. Use an empty list if the record supports none.
+  the MDT needs from that doctor. Use an empty list if the record supports none.
 
 ## Rules
 

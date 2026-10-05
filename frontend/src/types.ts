@@ -92,12 +92,23 @@ export interface Memory {
 }
 export interface Plan {
   version: number;
+  direction: 'INVESTIGATE_FURTHER' | 'PROCEED_TREATMENT';
   title: string;
+  decision: string;
   summary: string;
   actions: string[];
   conditions: string[];
+  resolved_requirements: RequirementResolution[];
   evidence_ids: string[];
   created_at: string;
+}
+export interface RequirementResolution {
+  requirement_id: string;
+  role: Role;
+  status: 'CONFIRMED';
+  human_input: string;
+  finding: string;
+  timestamp: string;
 }
 export interface Concurrence {
   role: Role;
@@ -171,6 +182,7 @@ export interface Meeting {
   roles: Partial<Record<Role, RoleState>>;
   evidence: Evidence[];
   frictions: Friction[];
+  requirement_resolutions?: RequirementResolution[];
   memories: Memory[];
   plan: Plan | null;
   concurrences: Partial<Record<Role, Concurrence>>;

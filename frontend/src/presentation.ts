@@ -150,7 +150,7 @@ const MEMORY_ACTION: Record<string, [string, string]> = {
   ignore: ['Memory set aside', 'A clinician set a saved review preference aside. It will not guide this review.'],
   forget: ['Memory forgotten', 'A clinician removed a saved review preference from future consideration.'],
 };
-export const DOCUMENT_NAME: Record<string, string> = { patient: 'Patient summary', clinician: 'Colleague letter' };
+export const DOCUMENT_NAME: Record<string, string> = { patient: 'Patient summary', clinician: 'Letter to accountable medical doctor' };
 /** Why an outcome document failed, in words a reviewer can act on. Never hides the failure. */
 export function documentError(message: string | null | undefined): string {
   const value = (message ?? '').trim();

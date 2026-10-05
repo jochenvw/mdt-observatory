@@ -442,7 +442,13 @@ def test_outcome_document_review_routes(tmp_path: Path) -> None:
         meeting_id = client.post("/api/meetings", json={"mode": "rehearsal"}).json()["id"]
         base = f"/api/meetings/{meeting_id}/communications"
         drain(client)
-        guidance = {"role": "radiology", "guidance": "Review all nine liver sites first."}
+        guidance = {
+            "role": "radiology",
+            "guidance": (
+                "I reviewed all nine liver sites and vessel margins. The sites are mapped and "
+                "the margins and remnant are adequate."
+            ),
+        }
         assert client.post(f"/api/meetings/{meeting_id}/steer", json=guidance).status_code == 200
         drain(client)
         client.post(f"/api/meetings/{meeting_id}/followup", json={})

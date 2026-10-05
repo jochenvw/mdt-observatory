@@ -15,22 +15,34 @@ from mdt.scenario import CASE
 from mdt.store import Store
 
 CLEARANCE_GUIDANCE = (
-    "Review all nine liver sites, vessel margins and the indeterminate lung nodule "
-    "before clearance planning."
+    "I reviewed all nine liver sites, vessel margins and the lung nodule. The sites are "
+    "mapped, the margins and remnant are adequate, and the nodule is not suspicious."
 )
 
 ADDITIONAL_CASES = (
-    ("CASE-MDT-CRC-WT-2026-002", "Review liver mapping, vascular margins and all baseline sites."),
+    (
+        "CASE-MDT-CRC-WT-2026-002",
+        "I reviewed all 11 baseline liver sites and the uncertain focus. The mapping, vessel "
+        "interfaces and remnant are adequate for the proposed parenchymal-sparing treatment.",
+    ),
     (
         "CASE-MDT-PDAC-PERIOP-2026-003",
-        "Review pancreatic imaging, vascular anatomy and the limitations of cardiac imaging.",
+        "I reviewed the pancreatic imaging alongside the echo: the SMV/portal interface is "
+        "reconstructable and no arterial involvement is seen. Cardiac reserve and fitness for "
+        "surgery stay with the perioperative review.",
     ),
 )
 
 
-@pytest.mark.parametrize(("case_id", "guidance"), ADDITIONAL_CASES)
+@pytest.mark.parametrize(
+    ("case_id", "guidance", "direction"),
+    (
+        (*ADDITIONAL_CASES[0], "PROCEED_TREATMENT"),
+        (*ADDITIONAL_CASES[1], "INVESTIGATE_FURTHER"),
+    ),
+)
 async def test_selected_case_complete_workflow_and_durable_source(
-    tmp_path: Path, case_id: str, guidance: str,
+    tmp_path: Path, case_id: str, guidance: str, direction: str,
 ) -> None:
     definition = get_case(case_id)
     assert definition.runtime is not None
@@ -52,9 +64,29 @@ async def test_selected_case_complete_workflow_and_durable_source(
     await settled(engine)
     assert meeting.phase == Phase.CONCURRENCE
     assert meeting.plan is not None
+    assert meeting.plan.direction == direction
+    assert meeting.plan.decision
     assert meeting.plan.title == definition.runtime.proposal.title
-    assert set(definition.runtime.proposal.conditions) <= set(meeting.plan.conditions)
-    assert set(definition.runtime.residual_conditions) <= set(meeting.plan.conditions)
+    expected_proposal_conditions = (
+        set(definition.runtime.proposal.conditions) - set(definition.runtime.imaging_conditions)
+    )
+    expected_residual_conditions = (
+        set(definition.runtime.residual_conditions) - set(definition.runtime.imaging_conditions)
+    )
+    assert expected_proposal_conditions <= set(meeting.plan.conditions)
+    assert expected_residual_conditions <= set(meeting.plan.conditions)
+    assert not set(definition.runtime.imaging_conditions) & set(meeting.plan.conditions)
+    assert len(meeting.plan.resolved_requirements) == 1
+    resolution = meeting.plan.resolved_requirements[0]
+    assert resolution.requirement_id == "imaging"
+    assert resolution.role == Role.RADIOLOGY
+    assert resolution.human_input == guidance
+    assert resolution.status == "CONFIRMED"
+    assert all(
+        not action.startswith(f"{state.label}:")
+        for action in meeting.plan.actions
+        for state in meeting.roles.values()
+    )
     for forbidden in ("encorafenib", "cetuximab", "all nine", "5 mm lung", "hypomagnesemia"):
         assert forbidden not in meeting.plan.model_dump_json().lower()
     if case_id.endswith("003"):
@@ -148,10 +180,61 @@ async def test_general_approval_keeps_the_imaging_question_open_until_a_review_i
     imaging = next(f for f in meeting.frictions if f.id == "imaging")
     assert not imaging.resolved, "approval that names no review must not close the question"
     assert meeting.roles[Role.RADIOLOGY].position.autonomy == "ESCALATE"
+    assert not meeting.requirement_resolutions
     await engine.steer(started.id, Role.RADIOLOGY, _example_replies()[case_id])
     await settled(engine)
     assert next(f for f in meeting.frictions if f.id == "imaging").resolved
     assert meeting.roles[Role.RADIOLOGY].position.autonomy == "REVIEW"
+    assert meeting.requirement_resolutions[0].human_input == _example_replies()[case_id]
+    await engine.close()
+
+
+async def test_incomplete_radiology_review_stays_pending_and_cannot_create_a_plan(
+    tmp_path: Path,
+) -> None:
+    engine = make_engine(tmp_path)
+    started = await engine.start("rehearsal", "CASE-MDT-PDAC-PERIOP-2026-003")
+    await settled(engine)
+    await engine.steer(
+        started.id,
+        Role.RADIOLOGY,
+        "I reviewed the pancreatic imaging. The interface is reconstructable, but the echo "
+        "and anaesthetic reserve review are still needed before surgery.",
+    )
+    await settled(engine)
+    meeting = engine.get(started.id)
+    imaging = next(item for item in meeting.frictions if item.id == "imaging")
+    assert not imaging.resolved
+    assert meeting.plan is None
+    assert not meeting.requirement_resolutions
+    assert meeting.roles[Role.RADIOLOGY].position.autonomy == "ESCALATE"
+    await engine.close()
+
+
+async def test_later_rejected_radiology_finding_overrides_an_earlier_confirmation(
+    tmp_path: Path,
+) -> None:
+    engine = make_engine(tmp_path)
+    started = await engine.start("rehearsal")
+    await settled(engine)
+    await engine.steer(started.id, Role.RADIOLOGY, CLEARANCE_GUIDANCE)
+    await settled(engine)
+    meeting = engine.get(started.id)
+    assert next(item for item in meeting.frictions if item.id == "imaging").resolved
+    assert meeting.requirement_resolutions
+
+    await engine.steer(
+        started.id,
+        Role.RADIOLOGY,
+        "I reviewed the liver mapping again. The vessel margin is inadequate and the sites "
+        "are not acceptable for the proposed treatment.",
+    )
+    await settled(engine)
+    imaging = next(item for item in meeting.frictions if item.id == "imaging")
+    assert not imaging.resolved
+    assert not meeting.requirement_resolutions
+    assert meeting.roles[Role.RADIOLOGY].position.autonomy == "ESCALATE"
+    assert any(event.type == "RequirementReopened" for event in meeting.events)
     await engine.close()
 
 
@@ -196,6 +279,12 @@ async def test_complete_demo_and_durable_audit(tmp_path: Path) -> None:
     assert state.phase == Phase.CONCURRENCE
     assert state.roles[Role.RADIOLOGY].revision == before[Role.RADIOLOGY]
     assert state.plan and state.plan.conditions
+    assert state.plan.direction == "PROCEED_TREATMENT"
+    assert state.plan.decision
+    assert state.plan.resolved_requirements[0].human_input == CLEARANCE_GUIDANCE
+    assert not set(get_case(str(CASE["id"])).runtime.imaging_conditions) & set(
+        state.plan.conditions
+    )
     for role in Role:
         if role not in state.concurrences:
             await engine.concur(meeting.id, role, "Reviewed demonstration proposal.")

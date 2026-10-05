@@ -3802,6 +3802,9 @@
       "PRETREAT stopped for futility and did not establish improved six-month disability or secondary clinical outcomes. Do not convert proactive hypotension treatment into a claim of demonstrated patient benefit.",
       "PONV-ACTION is a separate prospective before-after study, not another RCT or a randomized head-to-head comparison against risk display. Association after actionable recommendations does not establish randomized causal superiority."
     ],
+    "imaging_conditions": [
+      "Targeted human imaging review must address pancreatic anatomy, SMV/portal and arterial interfaces together with echo and physiological limitations; technical R0 plausibility is not fitness or margin clearance."
+    ],
     "applicability_condition": "Separate prediction accuracy, calibration and intervention benefit; fictional unvalidated hypotension/AKI scores cannot prescribe MAP targets, ICU/HDU or treatment. PRETREAT stopped for futility and did not establish improved six-month disability or secondary clinical outcomes. Do not convert proactive hypotension treatment into a claim of demonstrated patient benefit. PONV-ACTION is a separate prospective before-after study, not another RCT or a randomized head-to-head comparison against risk display. Association after actionable recommendations does not establish randomized causal superiority.",
     "protocol_condition": "PROTOCOL_NOT_PUBLIC: clinician verification of local medication withholding, monitoring, PONV prophylaxis, alert ownership/response and postoperative escalation rules is required.",
     "imaging_review_terms": [
@@ -3833,7 +3836,9 @@
       }
     },
     "proposal": {
+      "direction": "INVESTIGATE_FURTHER",
       "title": "Conditional pancreatic perioperative discussion after anatomy and reserve review",
+      "decision": "Complete accountable perioperative optimization and local protocol verification before deciding whether pancreatic surgery should proceed.",
       "summary": "Conditional discussion of proceeding versus targeted optimization, physiology-guided monitoring, actionable local PONV prophylaxis and human-selected postoperative observation. No unvalidated score, demonstration reveal or source-preferred plan automatically selects surgery, blood-pressure targets or ICU/HDU.",
       "conditions": [
         "Targeted human imaging review must address pancreatic anatomy, SMV/portal and arterial interfaces together with echo and physiological limitations; technical R0 plausibility is not fitness or margin clearance.",

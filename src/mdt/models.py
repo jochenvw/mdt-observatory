@@ -140,6 +140,15 @@ class Friction(Contract):
     resolution: str | None = None
 
 
+class RequirementResolution(Contract):
+    requirement_id: str
+    role: Role
+    status: Literal["CONFIRMED"]
+    human_input: str
+    finding: str
+    timestamp: str = Field(default_factory=utcnow)
+
+
 class Memory(Contract):
     id: str
     role: Role
@@ -160,6 +169,9 @@ class Plan(Contract):
     actions: list[str]
     conditions: list[str]
     evidence_ids: list[str]
+    direction: Literal["INVESTIGATE_FURTHER", "PROCEED_TREATMENT"] = "INVESTIGATE_FURTHER"
+    decision: str = ""
+    resolved_requirements: list[RequirementResolution] = Field(default_factory=list)
     created_at: str = Field(default_factory=utcnow)
 
 
@@ -281,6 +293,7 @@ class Meeting(Contract):
     roles: dict[str, RoleState] = Field(default_factory=dict)
     evidence: list[Evidence] = Field(default_factory=list)
     frictions: list[Friction] = Field(default_factory=list)
+    requirement_resolutions: list[RequirementResolution] = Field(default_factory=list)
     memories: list[Memory] = Field(default_factory=list)
     plan: Plan | None = None
     concurrences: dict[str, Concurrence] = Field(default_factory=dict)

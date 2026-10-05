@@ -30,6 +30,11 @@ live in Azure mode, and as a labelled replay of recorded responses in rehearsal.
 The process state machine and approval gates are application code,
 not model instructions that a generated response can override.
 
+The concurrence contract is one patient-level plan, never one plan per role. A
+plan explicitly says either `INVESTIGATE_FURTHER` or `PROCEED_TREATMENT`, carries
+one concise decision statement, and is reviewed identically by all specialties.
+Role positions remain supporting perspectives rather than separate proposals.
+
 The React interface uses Tailwind utilities over shared light/dark theme tokens.
 Specialty workspaces use different information structures and color treatments:
 image comparison, treatment/toxicity review, surgical readiness, tissue findings,
@@ -154,13 +159,20 @@ closed case to the participants' screens, while an uncleared room still resumes.
 ## Outcome communications
 
 Once the decision is captured, the engine drafts two documents from the recorded
-outcome: a patient summary and a letter for the GP or referring colleague. The
+outcome: a patient summary and a letter to the accountable medical doctor. The
 runtime (`communications.py`) is separate from the chair state machine. It reads
 a role-scoped copy of the record: plan, conditions and frictions for both
 documents. The patient summary also gets the patient-perspective position and
 priorities. The letter also gets every specialist position, concurrences,
 objections and metadata for the evidence the plan cites. It never reads raw
 events, tool traces or prompts.
+
+Completed human requirements are first-class audit records. An imaging
+instruction does not resolve the imaging friction: the radiologist must report a
+completed review and an acceptable finding. The original human input and
+resulting finding are persisted, copied into the shared plan and supplied to both
+outcome documents. Rejected, incomplete or missing reviews remain blocking and
+cannot be rewritten as completed by concurrence or document drafting.
 
 - **Skills, not scripts.** `skills/patient_summary.md` and `skills/clinician_letter.md`
   are case-agnostic writing instructions. The patient summary uses the dossier's

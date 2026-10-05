@@ -348,7 +348,8 @@ async def test_complete_workflow_with_blob_persistence(cloud: FakeContainer) -> 
     await engine.steer(
         meeting.id,
         Role.RADIOLOGY,
-        "Review all nine liver sites, vessel margins and the lung nodule before clearance.",
+        "I reviewed all nine liver sites, vessel margins and the lung nodule. The sites are "
+        "mapped, the margins and remnant are adequate, and the nodule is not suspicious.",
     )
     await settle()
     await engine.followup(meeting.id)

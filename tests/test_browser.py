@@ -216,8 +216,8 @@ def test_browser_full_demo_repeatability_and_mobile(server: str) -> None:
         expect(question).to_contain_text("I cannot settle this from the record alone")
         expect(question).to_contain_text("Can all nine original liver sites")
         page.locator("#guidance-radiology").fill(
-            "Review all nine liver sites, vessel margins and the indeterminate lung nodule "
-            "before clearance planning."
+            "I reviewed all nine liver sites, vessel margins and the lung nodule. The sites "
+            "are mapped, the margins and remnant are adequate, and the nodule is not suspicious."
         )
         click_command(page, page.get_by_role("button", name="Send reply", exact=True), "/steer")
         after_guidance = wait_settled(page)

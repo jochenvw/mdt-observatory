@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from uuid import uuid4
 
+from mdt.agents import confirmed_imaging_review
 from mdt.case_registry import case_ids, get_case
 from mdt.cohort import build_cohort, reference_statement
 from mdt.communications import (
@@ -29,6 +30,7 @@ from mdt.models import (
     Phase,
     Plan,
     Position,
+    RequirementResolution,
     Role,
     RoleState,
     utcnow,
@@ -534,10 +536,47 @@ class Engine:
                     await self._event("FrictionResolved", {"friction_id": friction.id})
             elif friction.id not in keys and not friction.resolved:
                 friction.resolved = True
-                friction.resolution = (
-                    "Updated specialist position addresses the question; residual uncertainty "
-                    "is retained in the conditional proposal."
+                human_input = (
+                    confirmed_imaging_review(
+                        meeting.roles[Role.RADIOLOGY].guidance,
+                        get_case(str(meeting.case["id"])).runtime.imaging_review_terms,
+                    )
+                    if friction.id == "imaging" and Role.RADIOLOGY in reassessed
+                    else None
                 )
+                if human_input is not None:
+                    finding = f"Radiologist reported: {human_input}"
+                    resolution = RequirementResolution(
+                        requirement_id="imaging",
+                        role=Role.RADIOLOGY,
+                        status="CONFIRMED",
+                        human_input=human_input,
+                        finding=finding,
+                    )
+                    meeting.requirement_resolutions = [
+                        item for item in meeting.requirement_resolutions
+                        if item.requirement_id != resolution.requirement_id
+                    ]
+                    meeting.requirement_resolutions.append(resolution)
+                    friction.resolution = (
+                        "Radiologist confirmed the targeted review was completed and acceptable. "
+                        "The original human input is preserved in the audit record."
+                    )
+                    await self._event(
+                        "RequirementResolved",
+                        {
+                            "requirement_id": resolution.requirement_id,
+                            "status": resolution.status,
+                            "human_input": resolution.human_input,
+                            "finding": resolution.finding,
+                        },
+                        Role.RADIOLOGY,
+                    )
+                else:
+                    friction.resolution = (
+                        "Updated specialist position addresses the question; residual uncertainty "
+                        "is retained in the conditional proposal."
+                    )
                 await self._event("FrictionResolved", {"friction_id": friction.id})
         for key, roles in keys.items():
             existing = next((f for f in meeting.frictions if f.id == key), None)
@@ -545,6 +584,25 @@ class Engine:
                 existing.roles = roles
                 existing.resolved = False
                 existing.resolution = None
+                if existing.id == "imaging" and any(
+                    item.requirement_id == "imaging"
+                    for item in meeting.requirement_resolutions
+                ):
+                    meeting.requirement_resolutions = [
+                        item for item in meeting.requirement_resolutions
+                        if item.requirement_id != "imaging"
+                    ]
+                    await self._event(
+                        "RequirementReopened",
+                        {
+                            "requirement_id": "imaging",
+                            "summary": (
+                                "Later radiology input no longer supports treating the review "
+                                "requirement as completed."
+                            ),
+                        },
+                        Role.RADIOLOGY,
+                    )
             else:
                 question, missing = definitions.get(key, (key, ["Specialist clarification"]))
                 meeting.frictions.append(
@@ -564,6 +622,10 @@ class Engine:
         await self._phase(Phase.PLAN_PROPOSAL)
         positions = [state.position for state in meeting.roles.values() if state.position]
         runtime = get_case(str(meeting.case["id"])).runtime
+        resolved_ids = {item.requirement_id for item in meeting.requirement_resolutions}
+        excluded_conditions = (
+            set(runtime.imaging_conditions) if "imaging" in resolved_ids else set()
+        )
         conditions = list(
             dict.fromkeys(
                 [
@@ -574,17 +636,19 @@ class Engine:
                 ]
             )
         )
-        # Specialties that reached the same recommendation share one action, so the
-        # plan reads as distinct next steps rather than repeated role text.
-        grouped: dict[str, list[str]] = {}
-        for p in positions:
-            grouped.setdefault(p.recommendation, []).append(meeting.roles[p.role].label)
+        conditions = [item for item in conditions if item not in excluded_conditions]
+        actions = list(dict.fromkeys(p.recommendation for p in positions))
         meeting.plan = Plan(
             version=meeting.plan.version + 1 if meeting.plan else 1,
+            direction=runtime.proposal.direction,
             title=runtime.proposal.title,
+            decision=runtime.proposal.decision,
             summary=runtime.proposal.summary,
-            actions=[f"{' · '.join(labels)}: {text}" for text, labels in grouped.items()],
+            actions=actions,
             conditions=conditions,
+            resolved_requirements=[
+                item.model_copy(deep=True) for item in meeting.requirement_resolutions
+            ],
             evidence_ids=list(
                 dict.fromkeys(
                     e for p in positions for claim in p.claims for e in claim.evidence_ids
@@ -592,7 +656,10 @@ class Engine:
             ),
         )
         meeting.concurrences.clear()
-        await self._event("PlanProposed", {"version": meeting.plan.version})
+        await self._event(
+            "PlanProposed",
+            {"version": meeting.plan.version, "direction": meeting.plan.direction},
+        )
         await self._phase(Phase.CONCURRENCE)
         objecting_roles = {obj["role"] for obj in meeting.objections}
         for position in positions:

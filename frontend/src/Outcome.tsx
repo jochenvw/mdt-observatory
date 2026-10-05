@@ -19,7 +19,7 @@ const PATIENT_LABELS: Record<string, { glossary: string; questions: string; draf
   it: { glossary: 'Parole spiegate', questions: 'Domande che potrebbe voler fare', draft: 'Bozza · non ancora approvata dal suo team di cura', approved: 'Controllato e approvato dal suo team di cura' },
   nl: { glossary: 'Woorden uitgelegd', questions: 'Vragen die u kunt stellen', draft: 'Concept · nog niet goedgekeurd door uw behandelteam', approved: 'Gecontroleerd en goedgekeurd door uw behandelteam' },
 };
-const AUDIENCE_TITLE: Record<Audience, string> = { patient: 'Patient summary', clinician: 'Letter to the GP or referring colleague' };
+const AUDIENCE_TITLE: Record<Audience, string> = { patient: 'Patient summary', clinician: 'Letter to accountable medical doctor' };
 const AUDIENCE_PURPOSE: Record<Audience, string> = {
   patient: 'Plain-language explanation of the outcome, written gently in the patient’s own language.',
   clinician: 'Clinician-to-clinician outcome letter in English, using standard medical terminology.',
@@ -62,7 +62,7 @@ export function OutcomeBanner({ meeting, open }: { meeting: Meeting; open: () =>
     <div className="min-w-0 flex-1">
       <p className="eyebrow">MDT OUTCOME · PLAN VERSION {meeting.plan.version}</p>
       <h2 className="mt-1 text-2xl">Consensus reached. The plan forward is on record.</h2>
-      <p className="mt-1 text-sm leading-7 text-cp-text-muted">{signed.total} of 7 specialties recorded · {signed.human.length} clinician concurrence{signed.human.length === 1 ? '' : 's'}{signed.agent.length ? `, ${signed.agent.length} automatic under demonstration policy (not human sign-off)` : ''}. Next: review the patient summary and the colleague letter.</p>
+      <p className="mt-1 text-sm leading-7 text-cp-text-muted">{signed.total} of 7 specialties recorded · {signed.human.length} clinician concurrence{signed.human.length === 1 ? '' : 's'}{signed.agent.length ? `, ${signed.agent.length} automatic under demonstration policy (not human sign-off)` : ''}. Next: review the patient summary and the letter to the accountable medical doctor.</p>
       <div className="mt-3 flex flex-wrap gap-2">{AUDIENCES.map(audience => { const item = meeting.communications?.[audience]; return <Badge key={audience} tone={item ? STATUS_TONE[item.status] : ''} pulse={item?.status === 'DRAFTING'}>{DOCUMENT_NAME[audience]}: {documentStatus(item)}</Badge>; })}</div>
     </div>
     <button data-testid="open-outcome" className="button primary large" onClick={open}>Open outcome &amp; letters <ArrowRight size={16} /></button>
@@ -75,7 +75,7 @@ export function Outcome({ meeting, pending, mutate }: { meeting: Meeting; pendin
   const [reviewRole, setReviewRole] = useState<Role | ''>('');
   const plan = meeting.plan;
   if (meeting.phase !== 'DECISION_CAPTURED' || !plan) {
-    return <section data-testid="outcome-pending" className="panel"><p className="eyebrow">MDT OUTCOME</p><h1 className="mt-2">The outcome is not recorded yet</h1><p className="mt-3 max-w-3xl text-base leading-8 text-cp-text-muted">Once every specialty has recorded its review of the proposal, this screen shows the agreed plan and the letters for the patient and the referring colleague. Current stage: {statusLabel(meeting.phase)}.</p></section>;
+    return <section data-testid="outcome-pending" className="panel"><p className="eyebrow">MDT OUTCOME</p><h1 className="mt-2">The outcome is not recorded yet</h1><p className="mt-3 max-w-3xl text-base leading-8 text-cp-text-muted">Once every specialty has recorded its review of the proposal, this screen shows the agreed plan, patient summary and letter to the accountable medical doctor. Current stage: {statusLabel(meeting.phase)}.</p></section>;
   }
   const item = open ? meeting.communications?.[open] : undefined;
   if (open) {
@@ -91,7 +91,10 @@ export function Outcome({ meeting, pending, mutate }: { meeting: Meeting; pendin
       </div>
       <div className="grid gap-8 p-6 sm:p-8 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,1fr)]">
         <div>
-          <p className="max-w-4xl text-base leading-8 text-cp-text-muted">{plan.summary}</p>
+          <Badge tone={plan.direction === 'PROCEED_TREATMENT' ? 'success' : 'warning'}>{plan.direction === 'PROCEED_TREATMENT' ? 'Proceed with treatment' : 'More investigation is required'}</Badge>
+          <h2 className="mt-4 text-2xl">{plan.decision || plan.title}</h2>
+          <p className="mt-3 max-w-4xl text-base leading-8 text-cp-text-muted">{plan.summary}</p>
+          {plan.resolved_requirements.length > 0 && <div className="mt-5 rounded-xl border border-cp-success bg-cp-bg-elevated p-5"><h2 className="text-lg">Completed requirements</h2><BulletList items={plan.resolved_requirements.map(item => item.finding)} /></div>}
           <h2 className="mt-6 text-2xl">The plan forward</h2>
           <ol data-testid="outcome-actions" className="mt-4 list-none space-y-4">{plan.actions.map((action, index) => <li key={index} className="flex gap-4"><span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-cp-accent font-mono text-sm text-cp-accent-fg">{index + 1}</span><p className="text-base leading-8">{outcomeText(action)}</p></li>)}</ol>
         </div>

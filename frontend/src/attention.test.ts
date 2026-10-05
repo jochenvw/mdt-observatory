@@ -7,7 +7,7 @@ function meeting(): Meeting {
     id: 'attention', phase: 'CONCURRENCE', mode: 'rehearsal', case: {}, roles: {},
     evidence: [], frictions: [], memories: [], concurrences: {}, objections: [], events: [],
     round: 1, busy: false, error: null, created_at: '', closed_at: null,
-    plan: { version: 2, title: 'Conditional proposal', summary: '', actions: [], conditions: [], evidence_ids: [], created_at: '' },
+    plan: { version: 2, direction: 'PROCEED_TREATMENT', title: 'Conditional proposal', decision: 'Proceed with treatment.', summary: '', actions: [], conditions: [], resolved_requirements: [], evidence_ids: [], created_at: '' },
   };
 }
 

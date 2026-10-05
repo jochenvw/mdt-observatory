@@ -64,7 +64,7 @@ const pancreaticProfiles: Record<Role, ClinicalProfile> = {
     title: 'Pancreatic response imaging',
     focus: ['Pancreatic head lesion', 'Vascular interfaces', 'Imaging limitations'],
     guidance: 'Review pancreatic tumour response and vascular interfaces. Distinguish technically plausible resection from physiological fitness; retain imaging uncertainty.',
-    reply: 'I reviewed the pancreatic imaging: the SMV/portal interface looks reconstructable and no arterial involvement is seen. Aortic stenosis and cardiac reserve still need the echo and anaesthetic review before surgery.',
+    reply: 'I reviewed the pancreatic imaging alongside the echo: the SMV/portal interface is reconstructable and no arterial involvement is seen. Cardiac reserve and fitness for surgery stay with the perioperative review.',
   },
   oncology: {
     title: 'Pancreatic treatment and recovery',

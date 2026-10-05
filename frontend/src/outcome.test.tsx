@@ -26,7 +26,7 @@ function decided(communications: Meeting['communications'] = { patient: doc('pat
   return {
     id: 'outcome-test', phase: 'DECISION_CAPTURED', mode: 'rehearsal', case: {}, roles: {},
     evidence: [], frictions: [], memories: [], objections: [], events: [], round: 2, busy: false, error: null,
-    plan: { version: 1, title: 'Liver-first conversion plan', summary: 'Agreed with conditions.', actions: ['Repeat MRI after cycle 6', 'Re-present at MDT'], conditions: ['Remnant volume to be confirmed'], evidence_ids: [], created_at: '2026-09-16T10:00:00Z' },
+    plan: { version: 1, direction: 'PROCEED_TREATMENT', title: 'Liver-first conversion plan', decision: 'Proceed with the agreed treatment pathway.', summary: 'Agreed with conditions.', actions: ['Repeat MRI after cycle 6', 'Re-present at MDT'], conditions: ['Remnant volume to be confirmed'], resolved_requirements: [], evidence_ids: [], created_at: '2026-09-16T10:00:00Z' },
     concurrences: Object.fromEntries(ROLES.map((role, index) => [role, { role, plan_version: 1, actor: index === 0 ? 'human' : 'agent', comment: '', timestamp: '2026-09-16T10:00:00Z' }])),
     communications, created_at: '2026-09-16T09:00:00Z', closed_at: '2026-09-16T10:00:00Z',
   };
@@ -82,7 +82,7 @@ describe('outcome screen', () => {
     expect(italian).toContain('Parole spiegate');
   });
 
-  it('renders the colleague letter in English with its tables', () => {
+  it('renders the accountable medical doctor letter in English with its tables', () => {
     const markup = screen(decided(), 'clinician');
     expect(markup).toContain('data-testid="letter-document"');
     expect(markup).toContain('lang="en-GB"');
@@ -119,7 +119,7 @@ describe('outcome document activity', () => {
   it('narrates drafting events readably', () => {
     expect(clinicalActivity({ type: 'CommunicationDraftingStarted', audiences: ['patient', 'clinician'] }).title).toBe('Outcome documents: drafting');
     expect(clinicalActivity({ type: 'CommunicationActivity', audience: 'patient', activity: 'ReviewRetryScheduled' }).title).toBe('Patient summary: waiting');
-    expect(clinicalActivity({ type: 'CommunicationDrafted', audience: 'clinician', revision: 2 }).title).toBe('Colleague letter ready for review · revision 2');
+    expect(clinicalActivity({ type: 'CommunicationDrafted', audience: 'clinician', revision: 2 }).title).toBe('Letter to accountable medical doctor ready for review · revision 2');
     const approved = clinicalActivity({ type: 'CommunicationApproved', audience: 'patient', reviewer: 'Dr A' });
     expect(approved.title).toBe('Patient summary approved');
     expect(approved.summary).toContain('Dr A');

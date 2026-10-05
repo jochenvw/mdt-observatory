@@ -67,6 +67,7 @@ RESIDUAL_CONDITIONS = [
     "Perioperative interruption/restart, oxaliplatin toxicity, colectomy sequencing and "
     "limited perioperative evidence after BRAF/EGFR induction require human review.",
 ]
+IMAGING_CONDITIONS = RESIDUAL_CONDITIONS[:3]
 
 ROLE_CONTEXTS: dict[Role, dict[str, Any]] = {
     Role.RADIOLOGY: {
@@ -478,10 +479,16 @@ FRICTIONS: dict[str, dict[str, Any]] = {
 }
 
 PROPOSAL: dict[str, Any] = {
+    "direction": "PROCEED_TREATMENT",
     "title": "Conditional colorectal conversion MDT proposal",
+    "decision": (
+        "Proceed with the agreed conditional local-treatment pathway now that radiology has "
+        "confirmed the mapped sites are acceptable, subject to the retained protocol, systemic "
+        "risk and patient-consent conditions."
+    ),
     "summary": (
         "After four cycles of encorafenib, cetuximab and mFOLFOX6, nine bilobar "
-        "liver metastases appear potentially clearable, but technical feasibility "
+        "liver metastases were reviewed as potentially clearable, but technical feasibility "
         "does not establish durable disease control. Review local treatment now "
         "against additional systemic therapy and deferred local treatment. "
         "The source's liver-first preference is conditional, not an automatic decision."

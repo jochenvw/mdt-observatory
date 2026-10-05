@@ -30,7 +30,8 @@ in **{{language}}**. This is the patient's preferred language. Use natural, ever
   model calibration, protocol access and demonstration caveats. Turn these into a few
   plain ideas, for example "research does not yet give a clear answer for someone in
   your situation" or "the hospital's own guidelines still need to be checked". Do not
-  describe study methods, trial names or scoring systems. The colleague letter carries
+  describe study methods, trial names or scoring systems. The letter to the accountable
+  medical doctor carries
   the technical detail.
 - Aim for about 600–900 words in total.
 

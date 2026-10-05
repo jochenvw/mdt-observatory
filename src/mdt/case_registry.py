@@ -4,7 +4,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from functools import cache
 from importlib.resources import files
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 from pydantic import TypeAdapter, model_validator
 
@@ -19,6 +19,7 @@ from mdt.scenario import (
     EVIDENCE,
     FRICTIONS,
     HYPOTHESIS,
+    IMAGING_CONDITIONS,
     IMAGING_REVIEW_TERMS,
     LESION_METHOD,
     LESION_NOTES,
@@ -43,7 +44,9 @@ class FrictionDefinition(Contract):
 
 
 class ProposalDefinition(Contract):
+    direction: Literal["INVESTIGATE_FURTHER", "PROCEED_TREATMENT"]
     title: str
+    decision: str
     summary: str
     conditions: list[str]
 
@@ -54,6 +57,7 @@ class CaseRuntime(Contract):
     recommendations: dict[Role, str]
     observations: dict[Role, list[str]]
     residual_conditions: list[str]
+    imaging_conditions: list[str]
     applicability_condition: str
     protocol_condition: str
     imaging_review_terms: list[str]
@@ -87,6 +91,8 @@ class CaseRuntime(Contract):
             raise ValueError("Case runtime must define both blocking review questions.")
         if not self.imaging_review_terms or not self.residual_conditions:
             raise ValueError("Case runtime must retain targeted review and residual conditions.")
+        if not set(self.imaging_conditions) <= set(self.residual_conditions):
+            raise ValueError("Imaging conditions must be a subset of residual conditions.")
         if any(not values for values in self.observations.values()):
             raise ValueError("Every specialist needs source observations.")
         return self
@@ -140,6 +146,7 @@ def _catalog() -> dict[str, CaseDefinition]:
         recommendations=dict.fromkeys(Role, RECOMMENDATION),
         observations=OBSERVATIONS,
         residual_conditions=RESIDUAL_CONDITIONS,
+        imaging_conditions=IMAGING_CONDITIONS,
         applicability_condition=APPLICABILITY_CONDITION,
         protocol_condition=PROTOCOL_CONDITION,
         imaging_review_terms=IMAGING_REVIEW_TERMS,

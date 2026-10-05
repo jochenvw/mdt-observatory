@@ -10,6 +10,7 @@ from conftest import FakeDrafter, fake_result
 
 from mdt import agents
 from mdt.agents import analyze
+from mdt.case_registry import get_case
 from mdt.communications import (
     LANGUAGES,
     PATIENT_SECTIONS,
@@ -33,15 +34,16 @@ from mdt.store import Store
 
 CASES = {
     "CASE-MDT-CRC-BRAF-2026-001": (
-        "Review all nine liver sites, vessel margins and the indeterminate lung nodule "
-        "before clearance planning.", "en",
+        "I reviewed all nine liver sites, vessel margins and the lung nodule. The sites are "
+        "mapped, the margins and remnant are adequate, and the nodule is not suspicious.", "en",
     ),
     "CASE-MDT-CRC-WT-2026-002": (
-        "Review liver mapping, vascular margins and all baseline sites.", "de",
+        "I reviewed all 11 baseline liver sites. The mapping, vessel interfaces and remnant "
+        "are adequate for the proposed parenchymal-sparing treatment.", "de",
     ),
     "CASE-MDT-PDAC-PERIOP-2026-003": (
-        "Review pancreatic imaging, vascular anatomy and the limitations of cardiac imaging.",
-        "it",
+        "I reviewed the pancreatic imaging, vascular anatomy, echo and physiological reserve. "
+        "The interface is reconstructable and the completed reserve review is acceptable.", "it",
     ),
 }
 SETTINGS = Settings(step_delay=0, azure_request_interval_seconds=0)
@@ -172,6 +174,55 @@ def test_letter_labels_the_synthetic_record_once_per_line(decided: dict[str, Mee
                for line in lines)
 
 
+def test_confirmed_radiology_review_is_completed_not_pending_in_both_documents(
+    decided: dict[str, Meeting],
+) -> None:
+    meeting = decided["CASE-MDT-CRC-BRAF-2026-001"]
+    assert meeting.plan is not None
+    patient = fake_result(communication_inputs(meeting, "patient"))
+    letter = fake_result(communication_inputs(meeting, "clinician"))
+    combined = " ".join(
+        text
+        for result in (patient, letter)
+        for section in result.sections
+        for text in (
+            *section.paragraphs,
+            *section.bullets,
+            *(cell for row in section.rows for cell in row),
+        )
+    )
+    assert meeting.plan.decision in combined
+    assert meeting.plan.resolved_requirements[0].finding in combined
+    for pending in get_case(meeting.case["id"]).runtime.imaging_conditions:
+        assert pending not in combined
+    doctor = next(
+        section for section in letter.sections
+        if section.id == "accountable_doctor_actions"
+    )
+    assert doctor.heading == "For the accountable medical doctor"
+
+
+def test_unresolved_requirement_remains_visible_to_communication_generation(
+    decided: dict[str, Meeting],
+) -> None:
+    meeting = decided["CASE-MDT-CRC-BRAF-2026-001"].model_copy(deep=True)
+    assert meeting.plan is not None
+    requirement = get_case(meeting.case["id"]).runtime.imaging_conditions[0]
+    meeting.plan.resolved_requirements = []
+    meeting.plan.conditions.insert(0, requirement)
+    imaging = next(item for item in meeting.frictions if item.id == "imaging")
+    imaging.resolved = False
+    imaging.resolution = None
+    inputs = communication_inputs(meeting, "clinician")
+    letter = fake_result(inputs)
+    combined = " ".join(
+        [cell for section in letter.sections for row in section.rows for cell in row]
+        + [bullet for section in letter.sections for bullet in section.bullets]
+    )
+    assert requirement in combined
+    assert f"Retained: {imaging.question}" in combined
+
+
 def test_a_fictional_fourth_case_drafts_through_the_same_skill(
     decided: dict[str, Meeting],
 ) -> None:
@@ -269,13 +320,20 @@ def patient_draft(
     ids = order or [item[0] for item in PATIENT_SECTIONS]
     actions = [f"plan.action.{index}" for index in range(len(inputs.plan.actions))]
     conditions = [f"plan.condition.{index}" for index in range(len(inputs.plan.conditions))]
+    resolved = [
+        f"plan.resolved_requirement.{index}"
+        for index in range(len(inputs.plan.resolved_requirements))
+    ]
     return PatientDraft(
         title="Your care plan",
         sections=[
             DraftSection(
                 id=section_id, heading=section_id.replace("_", " ").title(),
                 paragraphs=[paragraph],
-                source_refs=(actions + conditions) if index == 0 else ["plan.summary"],
+                source_refs=(
+                    ["plan.decision", *resolved, *actions, *conditions]
+                    if index == 0 else ["plan.summary"]
+                ),
             )
             for index, section_id in enumerate(ids)
         ],

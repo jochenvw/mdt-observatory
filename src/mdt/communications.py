@@ -231,7 +231,7 @@ class DraftStatement(Contract):
     source_refs: list[str]
 
 
-class DraftGpAction(Contract):
+class DraftAccountableDoctorAction(Contract):
     action: str
     timing: str
     source_refs: list[str]
@@ -240,7 +240,7 @@ class DraftGpAction(Contract):
 class LetterDraft(Contract):
     intent: DraftStatement
     discussion: list[DraftStatement]
-    gp_actions: list[DraftGpAction]
+    accountable_doctor_actions: list[DraftAccountableDoctorAction]
 
 
 def _text(value: Any) -> str:
@@ -328,8 +328,13 @@ def communication_inputs(
         ]
     inputs.refs = _ref_map(inputs)
     inputs.required_refs = [
+        "plan.decision",
         *(f"plan.action.{index}" for index in range(len(inputs.plan.actions))),
         *(f"plan.condition.{index}" for index in range(len(inputs.plan.conditions))),
+        *(
+            f"plan.resolved_requirement.{index}"
+            for index in range(len(inputs.plan.resolved_requirements))
+        ),
         *(
             [f"friction.{item.id}" for item in inputs.frictions]
             if audience == "clinician" else []
@@ -352,9 +357,20 @@ def _evidence_metadata(item: Evidence) -> dict[str, Any]:
 
 def _ref_map(inputs: CommunicationInput) -> dict[str, str]:
     plan = inputs.plan
-    refs: dict[str, str] = {"plan.title": plan.title, "plan.summary": plan.summary}
+    refs: dict[str, str] = {
+        "plan.title": plan.title,
+        "plan.direction": plan.direction,
+        "plan.decision": plan.decision,
+        "plan.summary": plan.summary,
+    }
     refs.update({f"plan.action.{i}": text for i, text in enumerate(plan.actions)})
     refs.update({f"plan.condition.{i}": text for i, text in enumerate(plan.conditions)})
+    refs.update({
+        f"plan.resolved_requirement.{i}": (
+            f"{item.finding} Confirmed by {item.role.value} from recorded human input."
+        )
+        for i, item in enumerate(plan.resolved_requirements)
+    })
     for key, value in inputs.case.items():
         if key == "history" and isinstance(value, list):
             refs.update({f"case.history.{i}": _text(item) for i, item in enumerate(value)})
@@ -591,7 +607,7 @@ def compose_letter(inputs: CommunicationInput, narrative: LetterDraft) -> DraftR
             f"{MDT_TYPE} · decision captured {_long_date(inputs.closed_at)} · "
             f"plan version {plan.version}.",
             "Specialties represented: " + ("; ".join(represented) or "none recorded") + ".",
-            "To: the general practitioner or referring colleague. "
+            "To: the accountable medical doctor. "
             "No named recipient is recorded in this demonstration.",
         ],
         source_refs=[
@@ -670,8 +686,15 @@ def compose_letter(inputs: CommunicationInput, narrative: LetterDraft) -> DraftR
     discussion.bullets = [item for item in discussion.bullets if item]
     outcome = CommunicationSection(
         id="outcome", heading="MDT outcome and recommendation",
-        paragraphs=[narrative.intent.text, plan.summary],
-        source_refs=["plan.summary", *refs(narrative.intent.source_refs)],
+        paragraphs=[text for text in (narrative.intent.text, plan.decision, plan.summary) if text],
+        source_refs=["plan.decision", "plan.summary", *refs(narrative.intent.source_refs)],
+    )
+    resolved = CommunicationSection(
+        id="resolved_requirements", heading="Completed requirements",
+        bullets=[item.finding for item in plan.resolved_requirements],
+        source_refs=[
+            f"plan.resolved_requirement.{i}" for i in range(len(plan.resolved_requirements))
+        ],
     )
     conditions = CommunicationSection(
         id="conditions", heading="Conditions and outstanding uncertainties",
@@ -688,14 +711,17 @@ def compose_letter(inputs: CommunicationInput, narrative: LetterDraft) -> DraftR
         ],
         source_refs=[f"plan.action.{i}" for i in range(len(plan.actions))],
     )
-    gp = CommunicationSection(
-        id="gp_actions", heading="For the GP",
-        paragraphs=[] if narrative.gp_actions else [
-            "No GP-specific action is supported by the record."
+    accountable_doctor = CommunicationSection(
+        id="accountable_doctor_actions", heading="For the accountable medical doctor",
+        paragraphs=[] if narrative.accountable_doctor_actions else [
+            "No accountable-doctor-specific action is supported by the record."
         ],
-        columns=["GP action", "Timing"],
-        rows=[[item.action, item.timing] for item in narrative.gp_actions],
-        source_refs=[ref for item in narrative.gp_actions for ref in refs(item.source_refs)],
+        columns=["Action", "Timing"],
+        rows=[[item.action, item.timing] for item in narrative.accountable_doctor_actions],
+        source_refs=[
+            ref for item in narrative.accountable_doctor_actions
+            for ref in refs(item.source_refs)
+        ],
     )
     spoken = language_for(str(case.get("preferred_language") or "en"))
     awareness = CommunicationSection(
@@ -746,7 +772,8 @@ def compose_letter(inputs: CommunicationInput, narrative: LetterDraft) -> DraftR
     result = DraftResult(
         title=f"MDT outcome letter · {case.get('pseudonym', inputs.case_id)}",
         sections=[
-            header, diagnosis, treatment, discussion, outcome, conditions, actions, gp,
+            header, diagnosis, treatment, discussion, outcome, resolved, conditions, actions,
+            accountable_doctor,
             awareness, evidence, sign_off,
         ],
         citations=citations,
@@ -986,7 +1013,7 @@ async def _model_attempt(
     cited = {
         *parsed.intent.source_refs,
         *(ref for item in parsed.discussion for ref in item.source_refs),
-        *(ref for item in parsed.gp_actions for ref in item.source_refs),
+        *(ref for item in parsed.accountable_doctor_actions for ref in item.source_refs),
     }
     _validate_live_text(parsed.model_dump_json(), cited, inputs)
     return compose_letter(inputs, parsed), parsed.model_dump_json()
@@ -1011,7 +1038,7 @@ async def draft(inputs: CommunicationInput, *, emit: Emit, settings: Settings) -
                     f"Writing the patient summary in {language.name} with the "
                     "patient-summary skill."
                     if inputs.audience == "patient"
-                    else "Writing the colleague letter with the clinician-letter skill."
+                    else "Writing the letter to the accountable medical doctor."
                 ),
                 "skill": SKILL_FILES[inputs.audience],
                 "language": language.code,

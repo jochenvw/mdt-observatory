@@ -131,7 +131,7 @@ describe('scenario-shaped clinical data bindings', () => {
         human_intervention: true, provenance: [], stance: 'CONDITIONAL', friction_keys: [], trace: state.trace,
       };
       meeting.evidence = evidence;
-      meeting.plan = { version: 1, title: 'Review', summary: 'Conditional review', actions: [], conditions: [condition], evidence_ids: evidence.map(source => source.id), created_at: '2026-09-16' };
+      meeting.plan = { version: 1, direction: 'INVESTIGATE_FURTHER', title: 'Review', decision: 'Investigate further.', summary: 'Conditional review', actions: [], conditions: [condition], resolved_requirements: [], evidence_ids: evidence.map(source => source.id), created_at: '2026-09-16' };
     });
     const nl = markup.split('data-testid="protocol-step-NL"')[1]?.split('data-testid="protocol-step-EU"')[0];
     const eu = markup.split('data-testid="protocol-step-EU"')[1]?.split('data-testid="protocol-step-ACCESS"')[0];

@@ -162,26 +162,41 @@ class RunState:
 
 
 def _targeted_imaging_guidance(guidance: list[str], terms: list[str]) -> bool:
-    """True when human guidance requests or reports a review of one of the case's structures.
+    """True only for a completed human review with an explicit acceptable finding."""
+    return confirmed_imaging_review(guidance, terms) is not None
 
-    Both an instruction ("Review the 11 sites") and a reported finding ("I reviewed the
-    11 sites") count; general approval ("go ahead") names nothing reviewed and does not.
-    """
+
+def confirmed_imaging_review(guidance: list[str], terms: list[str]) -> str | None:
+    """Return the latest human input naming the targets when it confirms an acceptable review."""
     target = r"\b(?:" + "|".join(re.escape(term) for term in terms) + r")s?\b"
-    comparison = (
-        r"\b(compar(?:e|ed|ison)|review(?:ed)?|check(?:ed)?|confirm(?:ed)?|assess(?:ed)?"
-        r"|verif(?:y|ied)|vergelijk|beoordeel(?:d)?)\b"
+    completed = (
+        r"\b(compared|reviewed|checked|confirmed|assessed|verified|beoordeeld|geverifieerd)\b"
     )
-    disregard = r"\b(ignore|disregard|skip|negeer)\b"
-    return any(
-        (
-            re.search(target, instruction, re.IGNORECASE) is not None
-            and re.search(comparison, instruction, re.IGNORECASE) is not None
+    acceptable = (
+        r"\b(acceptable|adequate|clear|cleared|mapped|feasible|reconstructable|suitable"
+        r"|not suspicious|no arterial involvement|veilig|voldoende|geschikt)\b"
+    )
+    unresolved = (
+        r"\b(still need|still needs|still needed|pending|required|requires|cannot|can't|incomplete"
+        r"|not reviewed|insufficient|inadequate|unsafe|unacceptable|onduidelijk|nog nodig)\b"
+        r"|(?<!not )\bsuspicious\b|(?<!no )\bcontraindication\b"
+    )
+    for instruction in reversed(guidance):
+        if re.search(target, instruction, re.IGNORECASE) is None:
+            continue
+        confirmed = (
+            re.search(completed, instruction, re.IGNORECASE) is not None
+            and re.search(acceptable, instruction, re.IGNORECASE) is not None
+            and re.search(unresolved, instruction, re.IGNORECASE) is None
+            and not re.search(
+                r"\b(do not|don't|not acceptable|not feasible|not suitable|not clear|rejected"
+                r"|geen)\b",
+                instruction,
+                re.IGNORECASE,
+            )
         )
-        and re.search(disregard, instruction, re.IGNORECASE) is None
-        and not re.search(r"\b(do not|don't|geen)\b", instruction, re.IGNORECASE)
-        for instruction in guidance
-    )
+        return instruction if confirmed else None
+    return None
 
 
 def _lesion_comparison(
@@ -1356,10 +1371,15 @@ def _validate_grounding(position: Position, state: RunState) -> None:
 def _safety_gates(position: Position, state: RunState) -> Position:
     result = position.model_copy(deep=True)
     runtime = state.definition.runtime
-    residual = runtime.residual_conditions
+    residual = [
+        item for item in runtime.residual_conditions if item not in runtime.imaging_conditions
+    ]
     applicability = runtime.applicability_condition
     protocol = runtime.protocol_condition
     friction = set(result.friction_keys)
+    result.uncertainties = [
+        item for item in result.uncertainties if item not in runtime.imaging_conditions
+    ]
     if state.role == Role.RADIOLOGY:
         result.uncertainties = list(dict.fromkeys([*result.uncertainties, *residual]))
         if any(item.targeted_imaging_review for item in state.results):
@@ -1367,6 +1387,9 @@ def _safety_gates(position: Position, state: RunState) -> Position:
             result.autonomy = "REVIEW"
             result.stance = "CONDITIONAL"
         else:
+            result.uncertainties = list(
+                dict.fromkeys([*result.uncertainties, *runtime.imaging_conditions])
+            )
             friction.add("imaging")
             result.autonomy = "ESCALATE"
             result.stance = "UNCERTAIN"

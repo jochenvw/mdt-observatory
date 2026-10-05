@@ -3709,6 +3709,11 @@
       "Liver-first, staged, synchronous, systemic-only and ablation/SBRT alternatives remain conditional; no operative outcome or complete clearance is claimed.",
       "Preserve caregiver priorities and shared consent; obtain role-scoped follow-up and version-bound human review before any agreed demonstration proposal."
     ],
+    "imaging_conditions": [
+      "Targeted human imaging review must reconcile all 11 baseline liver sites, including missing L6–L11 individual mapping; five conceptual rows are not a complete measured clearance map.",
+      "Review original versus residual/invisible sites and the uncertain 7 mm IVa focus with MRI and intra-operative ultrasound planning; radiological invisibility is not eliminated disease and apparent newness is not automatically true progression.",
+      "Human HPB/radiology review must establish safe vessel interfaces, ablation access and functional remnant; no numeric geometry or remnant is supplied for this case."
+    ],
     "applicability_condition": "Keep conversion-trial, maintenance, observational local-treatment and stage III ctDNA evidence separate; persistent ctDNA alone is not a validated surgery veto.",
     "protocol_condition": "PROTOCOL_NOT_PUBLIC: clinician verification of current Dutch/EU and institutional bevacizumab interruption/restart, complete clearance, colectomy sequencing and surveillance rules is required.",
     "imaging_review_terms": [
@@ -3741,8 +3746,10 @@
       }
     },
     "proposal": {
+      "direction": "PROCEED_TREATMENT",
       "title": "Conditional colorectal conversion discussion after complete mapping review",
-      "summary": "Conditional discussion of liver-first parenchymal-sparing resection/ablation versus further systemic, staged, synchronous or selective local approaches. The source preference is not an automatic treatment selection; all original sites, patient goals and protocol conditions remain for human review.",
+      "decision": "Proceed with the agreed conditional liver-directed treatment pathway after the completed radiology mapping review, subject to the retained systemic-therapy, protocol, patient-goal and consent conditions.",
+      "summary": "Conditional discussion of liver-first parenchymal-sparing resection/ablation versus further systemic, staged, synchronous or selective local approaches. The completed radiology mapping review is recorded; patient goals and protocol conditions remain for human review.",
       "conditions": [
         "Targeted human imaging review must reconcile all 11 baseline liver sites, including missing L6–L11 individual mapping; five conceptual rows are not a complete measured clearance map.",
         "Review original versus residual/invisible sites and the uncertain 7 mm IVa focus with MRI and intra-operative ultrasound planning; radiological invisibility is not eliminated disease and apparent newness is not automatically true progression.",

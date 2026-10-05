@@ -5,7 +5,7 @@ import type { Meeting, Position } from './types';
 function meeting(id = 'case-1', eventId = 1): Meeting {
   return {
     id, phase: 'CONCURRENCE', mode: 'rehearsal', case: {}, roles: {}, evidence: [],
-    frictions: [], memories: [], plan: { version: 2, title: 'Plan', summary: 'Review', actions: [], conditions: [], evidence_ids: [], created_at: '2026-09-16' },
+    frictions: [], memories: [], plan: { version: 2, direction: 'INVESTIGATE_FURTHER', title: 'Plan', decision: 'Investigate further.', summary: 'Review', actions: [], conditions: [], resolved_requirements: [], evidence_ids: [], created_at: '2026-09-16' },
     concurrences: {}, objections: [],
     events: [{ id: eventId, meeting_id: id, type: 'PlanProposed', role: null, payload: {}, timestamp: '2026-09-16' }],
     round: 2, busy: false, error: null, created_at: '2026-09-16', closed_at: null,
