@@ -161,6 +161,9 @@ class RunState:
         return LIVE_TOOLS.get(self.role, ()) if self.literature is not None else ()
 
 
+MEMORY_NUDGE_PREFIX = "Explicit memory nudge ("
+
+
 def _targeted_imaging_guidance(guidance: list[str], terms: list[str]) -> bool:
     """True only for a completed human review with an explicit acceptable finding."""
     return confirmed_imaging_review(guidance, terms) is not None
@@ -168,20 +171,27 @@ def _targeted_imaging_guidance(guidance: list[str], terms: list[str]) -> bool:
 
 def confirmed_imaging_review(guidance: list[str], terms: list[str]) -> str | None:
     """Return the latest human input naming the targets when it confirms an acceptable review."""
-    target = r"\b(?:" + "|".join(re.escape(term) for term in terms) + r")s?\b"
+    generic = ["site", "lesion", "imaging", "MRI", "CT", "scan"]
+    target = r"\b(?:" + "|".join(re.escape(term) for term in [*terms, *generic]) + r")s?\b"
     completed = (
-        r"\b(compared|reviewed|checked|confirmed|assessed|verified|beoordeeld|geverifieerd)\b"
+        r"\b(compared|reviewed|checked|confirmed|assessed|verified|looked at|went through"
+        r"|beoordeeld|geverifieerd|bekeken)\b"
     )
     acceptable = (
         r"\b(acceptable|adequate|clear|cleared|mapped|feasible|reconstructable|suitable"
-        r"|not suspicious|no arterial involvement|veilig|voldoende|geschikt)\b"
+        r"|not suspicious|no arterial involvement|good|fine|ok|okay|safe|satisfactory|resectable"
+        r"|no concerns?|veilig|voldoende|geschikt|goed)\b"
     )
     unresolved = (
         r"\b(still need|still needs|still needed|pending|required|requires|cannot|can't|incomplete"
-        r"|not reviewed|insufficient|inadequate|unsafe|unacceptable|onduidelijk|nog nodig)\b"
-        r"|(?<!not )\bsuspicious\b|(?<!no )\bcontraindication\b"
+        r"|not reviewed|insufficient|inadequate|unsafe|unacceptable|unclear|unresectable"
+        r"|onduidelijk|nog nodig)\b"
+        r"|(?<!not )\bsuspicious\b|(?<!no )\bcontraindication\b|(?<!no )\bconcerns?\b"
     )
     for instruction in reversed(guidance):
+        # Memory nudges are context, not radiologist findings; they cannot confirm or reopen.
+        if instruction.startswith(MEMORY_NUDGE_PREFIX):
+            continue
         if re.search(target, instruction, re.IGNORECASE) is None:
             continue
         confirmed = (
@@ -189,8 +199,8 @@ def confirmed_imaging_review(guidance: list[str], terms: list[str]) -> str | Non
             and re.search(acceptable, instruction, re.IGNORECASE) is not None
             and re.search(unresolved, instruction, re.IGNORECASE) is None
             and not re.search(
-                r"\b(do not|don't|not acceptable|not feasible|not suitable|not clear|rejected"
-                r"|geen)\b",
+                r"\b(do not|don't|not acceptable|not feasible|not suitable|not clear|not good"
+                r"|not fine|not ok|not okay|not safe|not resectable|rejected|niet|geen)\b",
                 instruction,
                 re.IGNORECASE,
             )

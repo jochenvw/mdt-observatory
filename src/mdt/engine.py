@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from uuid import uuid4
 
-from mdt.agents import confirmed_imaging_review
+from mdt.agents import MEMORY_NUDGE_PREFIX, confirmed_imaging_review
 from mdt.case_registry import case_ids, get_case
 from mdt.cohort import build_cohort, reference_statement
 from mdt.communications import (
@@ -1087,7 +1087,7 @@ class Engine:
                 "MemoryAction", {"memory_id": memory_id, "action": action}, memory.role
             )
             if action == "use":
-                note = f"Explicit memory nudge ({memory.category}, not medical fact): {memory.text}"
+                note = f"{MEMORY_NUDGE_PREFIX}{memory.category}, not medical fact): {memory.text}"
                 await self._invalidate("A clinician explicitly applied a memory nudge.")
                 meeting.roles[memory.role].guidance.append(note)
                 meeting.round += 1

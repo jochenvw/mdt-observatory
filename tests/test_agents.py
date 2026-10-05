@@ -1362,3 +1362,33 @@ def test_confirmed_imaging_review_traces_the_confirming_human_input() -> None:
         [confirmation, "I reviewed the liver sites again; the margins are not acceptable."],
         terms,
     ) is None
+
+
+CONFIRMING_REPLIES = (
+    "Reviewed the MRI: all sites mapped, margins clear.",
+    "I checked the liver sites and they are fine.",
+    "I have reviewed the sites and they are OK to proceed.",
+    "I reviewed the 11 sites and they look good, proceed.",
+    "I looked at the imaging, no concerns.",
+)
+NON_CONFIRMING_REPLIES = (
+    "It's fine - we can do it - go ahead",
+    "Liver sites look acceptable.",
+    "Please review the liver sites and check they are acceptable.",
+    "I reviewed the liver sites; margins are acceptable but the lung nodule requires repeat CT.",
+    "I reviewed the sites and the margins are not good.",
+    "I reviewed the imaging and I have concerns about the IVC margin.",
+    "I reviewed the sites; the margin is unclear.",
+)
+
+
+@pytest.mark.parametrize("reply", CONFIRMING_REPLIES)
+def test_natural_completed_imaging_confirmations_are_recognised(reply: str) -> None:
+    terms = get_case(str(CASE["id"])).runtime.imaging_review_terms
+    assert confirmed_imaging_review([reply], terms) == reply
+
+
+@pytest.mark.parametrize("reply", NON_CONFIRMING_REPLIES)
+def test_unreviewed_or_rejected_imaging_replies_stay_unresolved(reply: str) -> None:
+    terms = get_case(str(CASE["id"])).runtime.imaging_review_terms
+    assert confirmed_imaging_review([reply], terms) is None

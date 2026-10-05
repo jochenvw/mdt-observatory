@@ -1110,3 +1110,45 @@ async def test_cohort_reference_is_recorded_without_deciding_the_meeting(tmp_pat
         # A captured decision stays immutable; cohort context cannot be appended later.
         await engine.cohort_reference(meeting_id, None, [], "decision:continue_current_treatment")
     await engine.close()
+
+
+async def test_objection_and_restart_keep_the_confirmed_review_on_the_shared_plan(
+    tmp_path: Path,
+) -> None:
+    engine = make_engine(tmp_path)
+    meeting_id = await proposal(engine)
+    meeting = engine.get(meeting_id)
+    first = meeting.plan
+    assert first and first.resolved_requirements
+    await engine.object(meeting_id, Role.ONCOLOGY, "Please restate the systemic therapy timing.")
+    await engine.followup(meeting_id)
+    await settled(engine)
+    meeting = engine.get(meeting_id)
+    assert meeting.phase == Phase.CONCURRENCE
+    assert meeting.plan and meeting.plan.version == first.version + 1
+    assert meeting.plan.direction == first.direction
+    assert meeting.plan.decision == first.decision
+    assert [r.human_input for r in meeting.plan.resolved_requirements] == [CLEARANCE_GUIDANCE]
+    imaging = set(get_case(str(meeting.case["id"])).runtime.imaging_conditions)
+    assert not imaging & set(meeting.plan.conditions)
+    await engine.close()
+
+    restarted = make_engine(tmp_path)
+    reloaded = await restarted.load(meeting_id)
+    assert reloaded.plan == meeting.plan
+    assert reloaded.requirement_resolutions == meeting.requirement_resolutions
+    await restarted.close()
+
+
+async def test_memory_nudge_after_confirmation_does_not_reopen_the_review(tmp_path: Path) -> None:
+    engine = make_engine(tmp_path)
+    meeting_id = await proposal(engine)
+    meeting = engine.get(meeting_id)
+    memory = next(item for item in meeting.memories if item.role == Role.RADIOLOGY)
+    await engine.memory(meeting_id, memory.id, "use")
+    await settled(engine)
+    meeting = engine.get(meeting_id)
+    assert next(item for item in meeting.frictions if item.id == "imaging").resolved
+    assert [r.human_input for r in meeting.requirement_resolutions] == [CLEARANCE_GUIDANCE]
+    assert not any(event.type == "RequirementReopened" for event in meeting.events)
+    await engine.close()
