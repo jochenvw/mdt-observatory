@@ -65,8 +65,9 @@ def run(base_url: str, mode: str, output: Path, timeout: int) -> dict[str, Any]:
             {
                 "role": "radiology",
                 "guidance": (
-                    "Review all nine liver sites, vessel margins and the indeterminate lung "
-                    "nodule before clearance planning."
+                    "I reviewed the liver MRI and chest CT: all nine liver sites are mapped with "
+                    "clear vessel margins, the remnant looks adequate, and the lung nodule is "
+                    "stable and not suspicious."
                 ),
             },
         )
@@ -75,6 +76,10 @@ def run(base_url: str, mode: str, output: Path, timeout: int) -> dict[str, Any]:
         meeting = wait()
         assert meeting["phase"] == "CONCURRENCE"
         assert not any(f["blocking"] and not f["resolved"] for f in meeting["frictions"])
+        assert meeting["plan"]["direction"] == "PROCEED_TREATMENT"
+        assert [r["requirement_id"] for r in meeting["plan"]["resolved_requirements"]] == [
+            "imaging"
+        ]
         for role in meeting["roles"]:
             if role not in meeting["concurrences"]:
                 meeting = command(
